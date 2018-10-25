@@ -54,7 +54,7 @@ class MCTS:
         "Update the `children` dict with the children of `node`"
         if node in self.children:
             return  # already expanded
-        self.children[node] = node.find_children(node)
+        self.children[node] = node.find_children()
 
     def simulate(self, node):
         "Returns the reward for a random simulation (to completion) of `node`"
