@@ -66,9 +66,11 @@ class MCTS:
 
     def backpropagate(self, path, reward):
         "Send the reward back up to the ancestors of the leaf"
+        sign = 1
         for node in path:
             self.N[node] += 1
-            self.Q[node] += reward
+            self.Q[node] += sign * reward
+            sign = -sign
 
     def uct_select(self, node):
         "Select the most promising child of `node`"
