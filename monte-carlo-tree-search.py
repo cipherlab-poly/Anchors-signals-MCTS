@@ -1,5 +1,5 @@
 """
-A basic implementation of Monte Carlo tree search (MCTS) in Python 3.
+A minimal implementation of Monte Carlo tree search (MCTS) in Python 3.
 Luke Harold Miles, October 2018, Public Domain Dedication
 """
 from collections import defaultdict
@@ -66,11 +66,10 @@ class MCTS:
 
     def backpropagate(self, path, reward):
         "Send the reward back up to the ancestors of the leaf"
-        sign = 1
         for node in path:
             self.N[node] += 1
-            self.Q[node] += sign * reward
-            sign = -sign
+            self.Q[node] += reward
+            reward = 1 - reward  # 1 for me is 0 for my enemy, and vice versa
 
     def uct_select(self, node):
         "Select the most promising child of `node`"
@@ -93,15 +92,14 @@ class Node:
 
     def find_children(self):
         "All possible successors to this board state"
-        return []
+        return set()
 
     def find_random_child(self):
         "For efficiency in simulation. Returns None if node has no children"
         return None
 
     def reward(self):
-        """Assumes `self` is terminal node.
-        Positive for wins and negative for losses"""
+        "Assumes `self` is terminal node. 1 for win and 0 for loss"
         return 0
 
     def __init__(self):
