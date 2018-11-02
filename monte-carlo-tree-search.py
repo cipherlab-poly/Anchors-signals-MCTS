@@ -1,6 +1,7 @@
 """
 A minimal implementation of Monte Carlo tree search (MCTS) in Python 3.
-Luke Harold Miles, October 2018, Public Domain Dedication
+Luke Harold Miles, November 2018, Public Domain Dedication
+See also https://en.wikipedia.org/wiki/Monte_Carlo_tree_search
 """
 from collections import defaultdict
 import math
@@ -67,12 +68,12 @@ class MCTS:
     def backpropagate(self, path, reward):
         "Send the reward back up to the ancestors of the leaf"
         for node in path:
+            reward = 1 - reward  # 1 for me is 0 for my enemy, and vice versa
             self.N[node] += 1
             self.Q[node] += reward
-            reward = 1 - reward  # 1 for me is 0 for my enemy, and vice versa
 
     def uct_select(self, node):
-        "Select the most promising child of `node`"
+        "Select a child of node, balancing exploration & exploitation"
 
         # All children of node must be expanded:
         assert all(n in self.children for n in self.children[node])
@@ -99,7 +100,7 @@ class Node:
         return None
 
     def reward(self):
-        "Assumes `self` is terminal node. 1 for win and 0 for loss"
+        "Assumes `self` is terminal node. 1=win, 0=loss, .5=tie, etc"
         return 0
 
     def __init__(self):
@@ -107,9 +108,9 @@ class Node:
         pass
 
     def __hash__(self):
-        "Nodes must be hashable for MCTS"
+        "Nodes must be hashable"
         return 37
 
-    def __eq__(n1, n2):
+    def __eq__(node1, node2):
         "Nodes must be comparable"
         return True
