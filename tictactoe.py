@@ -1,6 +1,8 @@
 """
 An example implementation of the abstract Node class for use in MCTS
 
+If you run this file then you can play against the computer.
+
 A tic-tac-toe board is represented as a tuple of 9 values, each either None,
 True, or False, respectively meaning 'empty', 'X', and 'O'.
 
