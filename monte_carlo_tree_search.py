@@ -64,6 +64,8 @@ class MCTS:
 
     def _simulate(self, node):
         "Returns the reward for a random simulation (to completion) of `node`"
+        return node.reward()
+        
         invert_reward = True
         while True:
             if node.is_terminal():
@@ -77,7 +79,7 @@ class MCTS:
         for node in reversed(path):
             self.N[node] += 1
             self.Q[node] += reward
-            reward = 1 - reward  # 1 for me is 0 for my enemy, and vice versa
+            #reward = 1 - reward  # 1 for me is 0 for my enemy, and vice versa
 
     def _uct_select(self, node):
         "Select a child of node, balancing exploration & exploitation"
@@ -116,7 +118,7 @@ class Node(ABC):
     @abstractmethod
     def is_terminal(self):
         "Returns True if the node has no children"
-        return True
+        return False
 
     @abstractmethod
     def reward(self):
