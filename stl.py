@@ -1,51 +1,40 @@
 import numpy as np
 import itertools
-from typing import Dict, Set, Iterator
-Graph = Dict[Primitive, Set[Primitive]]
+from typing import Set, List
 
 from monte_carlo_tree_search import Node
 
 @dataclass
-class PrimitiveGenerator:
-    """
-    Note:
-        It contains every Primitive with bounded parameters i.e.
-            F-[t1,t2](s_i<mu_i)     G-[t1,t2](s_i<mu_i) 
-            F-[t1,t2](s_i>mu_i)     G-[t1,t2](s_i>mu_i)
-            F-[t1,t2](s_i=mu_i)     G-[t1,t2](s_i=mu_i)
-        where 0 <= t1, t2 <= slen and smins[i] <= mu_i <= smaxes[i] (cf. Primitive)
-    """
-    s: np.ndarray   # signal being explained
-    srange: list    # list of tuples
+class Generator:
+    "The static generator of primitives and signals."
+    
+    # (instance attributes)
+    _s: np.ndarray  # signal being explained
+    _srange: list   # list of tuples
                     # srange[d] = | (0, (min, max, stepsize))     if continuous
                     #             | (1, list of the finite set)   if discrete
-    rho: float      # robustness degree (~coverage) threshold
-    
-    def __post_init__(self):    
-        if len(self.srange) != self.s.shape[0]:
-            raise ValueError(f'srange: expected length {self.s.shape[0]}, ' + 
-                                f'got {len(self.srange)}')
+    _rho: float     # robustness degree (~coverage) threshold
         
-    def generate(self) -> Iterator[Primitive]:
+    def generate_primitives(self) -> List[Primitive]:
         "Generate STL primitives whose robustness is greater than `rho`"
             
-        for d in range(self.s.shape[0]):
+        result = []
+        sdim, slen = self._s.shape
+        for d in range(sdim):
             # d-th component is continuous
-            if self.srange[d][0] == 0:
-                smin = self.srange[d][1][0]
-                smax = self.srange[d][1][1]
-                stepsize = self.srange[d][1][2]
+            if self._srange[d][0] == 0:
+                smin, smax, stepsize = self._srange[d][1]
                 mus = np.linspace(smin, smax, num=stepsize, endpoint=False)[1:]
                 normalize = smax - smin
-                for i in range(self.s.shape[1]):
-                    l = [['F', 'G'], [i], range(i, self.s.shape[1]), [d], ['>', '<']]
+                for i in range(slen):
+                    l = [['F', 'G'], [i], range(i, slen), [d], ['>', '<']]
                     for r in itertools.product(*l):
                         stop = False
                         phi0 = Primitive(*r, mus[0], normalize)
                         phi1 = Primitive(*r, mus[-1], normalize)
-                        if phi0.robust(self.s) >= self.rho:
+                        if phi0.robust(self._s) >= self._rho:
                             u = 0
-                            if phi1.robust(self.s) < self.rho:
+                            if phi1.robust(self._s) < self._rho:
                                 l = len(mus) - 1
                                 from_beginning = True
                             else:
@@ -54,7 +43,7 @@ class PrimitiveGenerator:
                         else:
                             from_beginning = False
                             l = 0
-                            if phi1.robust(self.s) >= self.rho:
+                            if phi1.robust(self._s) >= self._rho:
                                 u = len(mus) - 1
                             else:
                                 u = len(mus)
@@ -64,46 +53,85 @@ class PrimitiveGenerator:
                             while True:
                                 phi0 = Primitive(*r, mus[l], normalize)
                                 phi1 = Primitive(*r, mus[u], normalize)
-                                if (phi0.robust(self.s) >= self.rho and 
-                                        phi1.robust(self.s) >= self.rho):
+                                if (phi0.robust(self._s) >= self._rho and 
+                                        phi1.robust(self._s) >= self._rho):
                                     break
-                                elif (phi0.robust(self.s) < self.rho and 
-                                        phi1.robust(self.s) < self.rho):
+                                elif (phi0.robust(self._s) < self._rho and 
+                                        phi1.robust(self._s) < self._rho):
                                     break
                                 q = (u + l) // 2
                                 if u == q or l == q:
                                     break
                                 phi2 = Primitive(*r, mus[q], normalize)
-                                if phi2.robust(self.s) >= self.rho:
+                                if phi2.robust(self._s) >= self._rho:
                                     u = q
                                 else:
                                     l = q
                         
                         if from_beginning:
                             for q in range(u+1):
-                                yield Primitive(*r, mus[q], normalize)
+                                result.append(Primitive(*r, mus[q], normalize))
                         else:
                             for q in range(u, len(mus)):
-                                yield Primitive(*r, mus[q], normalize)
-
+                                result.append(Primitive(*r, mus[q], normalize))
+                                
             # d-th component is discrete
-            elif self.srange[d][0] == 1:
-                mus = self.srange[d][1]
-                for i in range(self.s.shape[1]):
-                    l = [['F', 'G'], [i], range(i, self.s.shape[1])]
+            elif self._srange[d][0] == 1:
+                mus = self._srange[d][1]
+                for i in range(self._s.shape[1]):
+                    l = [['F', 'G'], [i], range(i, self._s.shape[1])]
                     l += [[d], ['='], mus]
                     for r in itertools.product(*l):
                         primitive = Primitive(*r)
-                        if primitive.robust(self.s) >= self.rho:
-                            yield primitive
+                        if primitive.robust(self._s) >= self._rho:
+                            result.append(primitive)
             else:
-                raise ValueError(f'{d}-th component continuous or discrete?')         
+                raise ValueError(f'{d}-th component continuous or discrete?')
+        return result
+
+    def sample_signal(self) -> np.ndarray:
+        "Simulate a signal by adding some artificially generated noise"
+        
+        sample = np.zeros(self._s.shape)
+        sdim, slen = self._s.shape
+        for d in range(sdim):
+            # d-th component is continuous
+            if self._srange[d][0] == 0:
+                smin, smax, _ = self._srange[d][1]
+                u = np.random.rand(sdim, slen) - 0.5
+                u *= 2*(smax - smin) / slen
+                sample[d] = self._s[d] + np.cumsum(u[d])
+            
+            # d-th component is discrete
+            elif self._srange[d][0] == 1:
+                choice = self._srange[d][1]
+                length = len(choice)
+                for t in range(self._s.shape[1]):
+                    i = choice.index(self._s[d, t])
+                    if length > 1:
+                        distr = [0.5/(length-1)]*length
+                        distr[i] = 0.5
+                    else:
+                        distr = [1]
+                    sample[d, t] = np.random.choice(choice, p=distr)
+            else:
+                raise ValueError(f'{d}-th component continuous or discrete?')
+        return sample
+
+    def sample_signal_with_condition(self, condition: STL) -> np.ndarray:
+        "Sample until the STL `condition` is satisfied"
+
+        sample = self._sample_signal()
+        while not condition.satisfy(sample):
+            sample = self._sample_signal()
+        return sample
+
 
 @dataclass
 class Primitive:
     "Ex: Primitive('G', 0, 5, '>', 20) <=> G[0,5](s_i > 20)"
     
-    typ: str            # 'F-'(eventually) or 'G-'(always)
+    typ: str            # 'F'(eventually) or 'G'(always)
     a: int              # lower bound delay
     b: int              # upper bound delay
     i: int              # component index
@@ -114,7 +142,7 @@ class Primitive:
     
     def __post_init__(self):
         if self.typ not in ['F', 'G']:
-            raise ValueError('Invalid basic ptSTL type')
+            raise ValueError('Invalid basic STL type')
         elif self.a < 0 or self.b < 0:
             raise ValueError('Invalid delay interval (negative bounds)')
         elif self.a > self.b:
@@ -125,7 +153,7 @@ class Primitive:
     def robust(self, s: np.ndarray) -> float:
         "Compute the robustness degree relative to signal `s`"
         
-        if self.typ == 'F-':
+        if self.typ == 'F':
             if self.comp == '<':
                 res = self.mu - np.min(s[self.i, self.a:self.b+1])
                 return res/self.normalize
@@ -152,60 +180,38 @@ class Primitive:
         "Verify if satisfied by signal `s`"
         return self.robust(s) > 0
 
-    def __hash__(self):
-        "So that Primitives can be put in a frozenset (for STL construction)"
-        return hash((self.typ, self.a, self.b, self.i, self.comp, self.mu))
-
-    def __eq__(self, other: Primitive):
-        return hash(self) == hash(other)
-    
     def __repr__(self):
         return f'{self.typ}[{self.a},{self.b}](s{self.i+1}{self.comp}{self.mu:.2f})'
 
 @dataclass
 class STL(Node):
-    """ 
-    Note:
-        The instance (prev_cand U {last_primitive}) represents the conjunction 
-        of these basic STL formulas going to be used as our Anchor Candidate.
-    """
-    prev_cand: Frozenset[Primitive] = frozenset()   # previous candidates
-    last_primitive: Primitive = None                # last added STL primitive
+    # (class attributes)
+    __generator = None # static generator of primitives and signals
+    __primitives = None # primitive candidates generated will be stored here
     
-    def conjoin(self, phi: Primitive) -> STL:
-        "Compute its conjunction with `phi`"
-        
-        if self.last_primitive is None:
-            return PtSTL(frozenset(), phi)
-        return PtSTL(self.prev_cand.union({self.last_primitive}), phi)
+    # (instance attribute)
+    # The conjunction of these primitives represents the STL instance.
+    _tup: Set[int] = set()
 
     def satisfy(self, s: np.ndarray) -> bool:
-        "Verify if satisfied by signal `s`"
-
-        if self.last_primitive is None:
-            return True
-        if self.last_primitive.satisfy(s):
-            return all(primitive.satisfy(s) for primitive in self.prev_cand)
-        return False
+        "Verify if STL is satisfied by signal `s`"
+        return all(STL.__primitives[i].satisfy(s) for i in self._tup)
 
     def find_children(self) -> Set[STL]:
-        
+        return {STL(_tup = self._tup.union(i)) 
+            for i in range(len(STL.__primitives))} - {self}
 
     def reward(self) -> int:
-
+        sample = STL.__generator.sample_signal_with_condition(self)
+        return int(self.satisfy(sample))
 
     def __hash__(self):
-        return hash((self.prev_cand, self.last_primitive))
+        return hash(self._tup)
 
-    def __eq__(self, other: STL):
-        return hash(self) == hash(other)
+    def __eq__(self, other):
+        return isinstance(other, STL) and hash(self) == hash(other)
 
     def __repr__(self):
-        if not self.prev_cand:
-            if self.last_primitive is None:
-                return 'T'
-            else:
-                return str(self.last_primitive)
-        res = '^'.join(str(phi) for phi in self.prev_cand)
-        res += f'^{self.last_primitive}'
-        return res
+        if not len(self._tup):
+            return 'T'
+        return '^'.join(repr(STL.__primitives[i]) for i in self._tup)
