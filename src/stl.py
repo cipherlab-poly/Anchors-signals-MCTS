@@ -1,8 +1,68 @@
+from __future__ import annotations
+
 import numpy as np
 import itertools
-from typing import Set, List
+from typing import List, FrozenSet
+from dataclasses import dataclass
 
-from monte_carlo_tree_search import Node
+from .mcts import Node
+
+@dataclass
+class Primitive:
+    "Ex: Primitive('G', 0, 5, '>', 20) <=> G[0,5](s_i > 20)"
+    
+    typ: str            # 'F'(eventually) or 'G'(always)
+    a: int              # lower bound delay
+    b: int              # upper bound delay
+    i: int              # component index
+    comp: str           # '<' or '>' (continuous) or '=' (discrete)
+    mu: float           # constant threshold
+    normalize: float    # if continuous, max - min of mu
+                        # if discrete, 1 (to normalize robustness degree)
+    
+    def __post_init__(self):
+        if self.typ not in ['F', 'G']:
+            raise ValueError('Invalid basic STL type')
+        elif self.a < 0 or self.b < 0:
+            raise ValueError('Invalid delay interval (negative bounds)')
+        elif self.a > self.b:
+            raise ValueError('Invalid delay interval (wrong order)') 
+        elif self.comp not in ['<', '>', '=']:
+            raise ValueError('Invalid comparison')
+
+    def robust(self, s: np.ndarray) -> float:
+        "Compute the robustness degree relative to signal `s`"
+        
+        if self.typ == 'F':
+            if self.comp == '<':
+                res = self.mu - np.min(s[self.i, self.a:self.b+1])
+                return res/self.normalize
+            elif self.comp == '>':
+                res = np.max(s[self.i, self.a:self.b+1]) - self.mu
+                return res/self.normalize
+            elif self.mu in s[self.i, self.a:self.b+1]:
+                return 1
+            else:
+                return -1
+        else:
+            if self.comp == '<':
+                res = self.mu - np.max(s[self.i, self.a:self.b+1])
+                return res/self.normalize
+            elif self.comp == '>':
+                res = np.min(s[self.i, self.a:self.b+1]) - self.mu
+                return res/self.normalize
+            elif all(v == self.mu for v in s[self.i, self.a:self.b+1]):
+                return 1
+            else:
+                return -1
+
+    def satisfy(self, s: np.ndarray) -> bool:
+        "Verify if satisfied by signal `s`"
+        return self.robust(s) > 0
+
+    def __repr__(self):
+        return f'{self.typ}[{self.a},{self.b}](s{self.i+1}{self.comp}{self.mu:.2f})'
+
 
 @dataclass
 class Generator:
@@ -89,7 +149,7 @@ class Generator:
                 raise ValueError(f'{d}-th component continuous or discrete?')
         return result
 
-    def sample_signal(self) -> np.ndarray:
+    def _sample_signal(self) -> np.ndarray:
         "Simulate a signal by adding some artificially generated noise"
         
         sample = np.zeros(self._s.shape)
@@ -128,78 +188,41 @@ class Generator:
 
 
 @dataclass
-class Primitive:
-    "Ex: Primitive('G', 0, 5, '>', 20) <=> G[0,5](s_i > 20)"
-    
-    typ: str            # 'F'(eventually) or 'G'(always)
-    a: int              # lower bound delay
-    b: int              # upper bound delay
-    i: int              # component index
-    comp: str           # '<' or '>' (continuous) or '=' (discrete)
-    mu: float           # constant threshold
-    normalize: float    # if continuous, max - min of mu
-                        # if discrete, 1 (to normalize robustness degree)
-    
-    def __post_init__(self):
-        if self.typ not in ['F', 'G']:
-            raise ValueError('Invalid basic STL type')
-        elif self.a < 0 or self.b < 0:
-            raise ValueError('Invalid delay interval (negative bounds)')
-        elif self.a > self.b:
-            raise ValueError('Invalid delay interval (wrong order)') 
-        elif self.comp not in ['<', '>', '=']:
-            raise ValueError('Invalid comparison')
-
-    def robust(self, s: np.ndarray) -> float:
-        "Compute the robustness degree relative to signal `s`"
-        
-        if self.typ == 'F':
-            if self.comp == '<':
-                res = self.mu - np.min(s[self.i, self.a:self.b+1])
-                return res/self.normalize
-            elif self.comp == '>':
-                res = np.max(s[self.i, self.a:self.b+1]) - self.mu
-                return res/self.normalize
-            elif self.mu in s[self.i, self.a:self.b+1]:
-                return 1
-            else:
-                return -1
-        else:
-            if self.comp == '<':
-                res = self.mu - np.max(s[self.i, self.a:self.b+1])
-                return res/self.normalize
-            elif self.comp == '>':
-                res = np.min(s[self.i, self.a:self.b+1]) - self.mu
-                return res/self.normalize
-            elif all(v == self.mu for v in s[self.i, self.a:self.b+1]):
-                return 1
-            else:
-                return -1
-
-    def satisfy(self, s: np.ndarray) -> bool:
-        "Verify if satisfied by signal `s`"
-        return self.robust(s) > 0
-
-    def __repr__(self):
-        return f'{self.typ}[{self.a},{self.b}](s{self.i+1}{self.comp}{self.mu:.2f})'
-
-@dataclass
 class STL(Node):
     # (class attributes)
-    __generator = None # static generator of primitives and signals
+    __generator = None  # static generator of primitives and signals
     __primitives = None # primitive candidates generated will be stored here
     
     # (instance attribute)
     # The conjunction of these primitives represents the STL instance.
-    _tup: Set[int] = set()
+    _tup: FrozenSet[int] = frozenset()
+
+    def initialize(self, generator):
+        STL.__generator = generator
+        STL.__primitives = generator.generate_primitives()
+        return len(STL.__primitives)
 
     def satisfy(self, s: np.ndarray) -> bool:
         "Verify if STL is satisfied by signal `s`"
         return all(STL.__primitives[i].satisfy(s) for i in self._tup)
 
+    def is_terminal(self) -> bool:
+        return len(self._tup) > 3
+        #return False
+    
     def find_children(self) -> Set[STL]:
-        return {STL(_tup = self._tup.union(i)) 
+        if self.is_terminal():
+            return set()
+        return {STL(self._tup.union([i]))
             for i in range(len(STL.__primitives))} - {self}
+
+    def find_random_child(self) -> STL:
+        if self.is_terminal():
+            return None        
+        i = np.random.randint(len(STL.__primitives))
+        while i in self._tup:
+            i = np.random.randint(len(STL.__primitives))
+        return STL(self._tup.union([i]))
 
     def reward(self) -> int:
         sample = STL.__generator.sample_signal_with_condition(self)

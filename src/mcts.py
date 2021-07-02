@@ -12,7 +12,7 @@ import math
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
-    def __init__(self, exploration_weight=1):
+    def __init__(self, exploration_weight=math.sqrt(2)):
         self.Q = defaultdict(int)  # total reward of each node
         self.N = defaultdict(int)  # total visit count for each node
         self.children = dict()  # children of each node
@@ -25,13 +25,13 @@ class MCTS:
 
         if node not in self.children:
             return node.find_random_child()
-
+    
         def score(n):
             if self.N[n] == 0:
                 return float("-inf")  # avoid unseen moves
             return self.Q[n] / self.N[n]  # average reward
 
-        return max(self.children[node], key=score)
+        return max(self.children[node], key=lambda n: self.N[n])
 
     def do_rollout(self, node):
         "Make the tree one layer better. (Train for one iteration.)"
@@ -118,7 +118,7 @@ class Node(ABC):
     @abstractmethod
     def is_terminal(self):
         "Returns True if the node has no children"
-        return False
+        return True
 
     @abstractmethod
     def reward(self):
