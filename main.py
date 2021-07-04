@@ -37,7 +37,6 @@ params = {
     'black_box': None,
     'tau': 0.95,
     'rho': 0.05,
-    'num_train': 10000
 }
 
 def explain_thermostat(params):
@@ -52,7 +51,7 @@ def explain_thermostat(params):
     tm.simulate(slen)
 
     params['s'] = np.array([tm.temps])
-    params['srange'] = [(0, (19, 21, 10))]
+    params['srange'] = [(0, (19, 21, 100))]
     params['black_box'] = tm.black_box
     params['y'] = tm.on
 
@@ -109,6 +108,9 @@ def explain_fault_at(params):
     params['black_box'] = at.black_box
     params['y'] = at.black_box(params['s'])
 
+def has_same_output(sample):
+    return params['black_box'](sample) == params['y']
+
 def main():
     explain_thermostat(params)
     #explain_acas_xu(params)
@@ -132,16 +134,15 @@ def main():
     stl = STL()
     generator = Generator(params['s'], params['srange'], params['rho'])
     logging.info('Initializing primitives...')
-    nb_primitives = stl.initialize(generator)
+    nb_primitives = stl.initialize(generator, has_same_output)
     logging.info(f'Done. {nb_primitives} primitives.')
     while True:
         logging.info('Choosing best primitive...')
-        for i in range(params['num_train']):
-            print(f"{i}/{params['num_train']} \r", end='')
+        for i in range(nb_primitives):
+            print(f'{i}/{nb_primitives} \r', end='')
             tree.do_rollout(stl)
         stl = tree.choose(stl)
-        q = tree.Q[stl]
-        n = tree.N[stl]
+        q, n = tree.Q[stl], tree.N[stl]
         logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')
         if q/n > params['tau']:
             return

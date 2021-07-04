@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import itertools
-from typing import List, FrozenSet
+from typing import List, FrozenSet, Callable
 from dataclasses import dataclass
 
 from .mcts import Node
@@ -189,17 +189,19 @@ class Generator:
 
 @dataclass
 class STL(Node):
-    # (class attributes)
-    __generator = None  # static generator of primitives and signals
-    __primitives = None # primitive candidates generated will be stored here
-    
+    # (class attributes) to be set during initialization
+    __generator         = None # static generator of primitives and signals
+    __primitives        = None # generated primitive will be stored here
+    __has_same_output   = None # callable evaluating a signal sample (-> bool)
+
     # (instance attribute)
     # The conjunction of these primitives represents the STL instance.
     _tup: FrozenSet[int] = frozenset()
 
-    def initialize(self, generator):
+    def initialize(self, generator: Generator, has_same_output: Callable):
         STL.__generator = generator
         STL.__primitives = generator.generate_primitives()
+        STL.__has_same_output = has_same_output
         return len(STL.__primitives)
 
     def satisfy(self, s: np.ndarray) -> bool:
@@ -207,26 +209,24 @@ class STL(Node):
         return all(STL.__primitives[i].satisfy(s) for i in self._tup)
 
     def is_terminal(self) -> bool:
-        return len(self._tup) > 3
-        #return False
+        return False
     
     def find_children(self) -> Set[STL]:
-        if self.is_terminal():
-            return set()
         return {STL(self._tup.union([i]))
             for i in range(len(STL.__primitives))} - {self}
 
     def find_random_child(self) -> STL:
-        if self.is_terminal():
-            return None        
         i = np.random.randint(len(STL.__primitives))
         while i in self._tup:
             i = np.random.randint(len(STL.__primitives))
         return STL(self._tup.union([i]))
 
-    def reward(self) -> int:
-        sample = STL.__generator.sample_signal_with_condition(self)
-        return int(self.satisfy(sample))
+    def reward(self, batch_size) -> int:
+        r = 0
+        for _ in range(batch_size):
+            sample = STL.__generator.sample_signal_with_condition(self)
+            r += int(STL.__has_same_output(sample))
+        return r
 
     def __hash__(self):
         return hash(self._tup)
