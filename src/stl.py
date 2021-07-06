@@ -11,57 +11,78 @@ from .mcts import Node
 class Primitive:
     "Ex: Primitive('G', 0, 5, '>', 20) <=> G[0,5](s_i > 20)"
     
-    typ: str            # 'F'(eventually) or 'G'(always)
-    a: int              # lower bound delay
-    b: int              # upper bound delay
-    i: int              # component index
-    comp: str           # '<' or '>' (continuous) or '=' (discrete)
-    mu: float           # constant threshold
-    normalize: float    # if continuous, max - min of mu
-                        # if discrete, 1 (to normalize robustness degree)
+    _typ: str            # 'F'(eventually) or 'G'(always)
+    _a: int              # lower bound delay
+    _b: int              # upper bound delay
+    _i: int              # component index
+    _comp: str           # '<' or '>' (continuous) or '=' (discrete)
+    _mu: float           # constant threshold
+    _normalize: float    # if continuous, max - min of mu
+                         # if discrete, 1 (to normalize robustness degree)
     
     def __post_init__(self):
-        if self.typ not in ['F', 'G']:
+        if self._typ not in ['F', 'G']:
             raise ValueError('Invalid basic STL type')
-        elif self.a < 0 or self.b < 0:
+        elif self._a < 0 or self._b < 0:
             raise ValueError('Invalid delay interval (negative bounds)')
-        elif self.a > self.b:
+        elif self._a > self._b:
             raise ValueError('Invalid delay interval (wrong order)') 
-        elif self.comp not in ['<', '>', '=']:
+        elif self._comp not in ['<', '>', '=']:
             raise ValueError('Invalid comparison')
 
     def robust(self, s: np.ndarray) -> float:
         "Compute the robustness degree relative to signal `s`"
         
-        if self.typ == 'F':
-            if self.comp == '<':
-                res = self.mu - np.min(s[self.i, self.a:self.b+1])
-                return res/self.normalize
-            elif self.comp == '>':
-                res = np.max(s[self.i, self.a:self.b+1]) - self.mu
-                return res/self.normalize
-            elif self.mu in s[self.i, self.a:self.b+1]:
+        if self._typ == 'F':
+            if self._comp == '<':
+                res = self._mu - np.min(s[self._i, self._a:self._b+1])
+                return res/self._normalize
+            elif self._comp == '>':
+                res = np.max(s[self._i, self._a:self._b+1]) - self._mu
+                return res/self._normalize
+            elif self._mu in s[self._i, self._a:self._b+1]:
                 return 1
             else:
                 return -1
         else:
-            if self.comp == '<':
-                res = self.mu - np.max(s[self.i, self.a:self.b+1])
-                return res/self.normalize
-            elif self.comp == '>':
-                res = np.min(s[self.i, self.a:self.b+1]) - self.mu
-                return res/self.normalize
-            elif all(v == self.mu for v in s[self.i, self.a:self.b+1]):
+            if self._comp == '<':
+                res = self._mu - np.max(s[self._i, self._a:self._b+1])
+                return res/self._normalize
+            elif self._comp == '>':
+                res = np.min(s[self._i, self._a:self._b+1]) - self._mu
+                return res/self._normalize
+            elif all(v == self._mu for v in s[self._i, self._a:self._b+1]):
                 return 1
             else:
                 return -1
+
+    def is_child_of(self, parent: Primitive) -> bool:
+        if parent == self or parent._comp != self._comp or parent._i != self._i:
+            return False
+        
+        cond1 = parent._typ == 'G' and parent._a <= self._a and self._b <= parent._b 
+        cond2 = self._typ == 'F' and self._a <= parent._a and parent._b <= self._b
+        if cond1 or cond2:
+            if self._comp == '<':
+                return parent._mu <= self._mu
+            elif self._comp == '>':
+                return self._mu <= parent._mu
+            else:
+                return self._mu == parent._mu
+        return False
 
     def satisfy(self, s: np.ndarray) -> bool:
         "Verify if satisfied by signal `s`"
         return self.robust(s) > 0
 
+    def __hash__(self):
+        return hash((self._typ, self._a, self._b, self._i, self._comp, self._mu))
+
+    def __eq__(self, other):
+        return isinstance(other, Primitive) and hash(self) == hash(other)
+
     def __repr__(self):
-        return f'{self.typ}[{self.a},{self.b}](s{self.i+1}{self.comp}{self.mu:.2f})'
+        return f'{self._typ}[{self._a},{self._b}](s{self._i+1}{self._comp}{self._mu:.2f})'
 
 
 @dataclass
@@ -190,18 +211,25 @@ class Generator:
 @dataclass
 class STL(Node):
     # (class attributes) to be set during initialization
-    __generator         = None # static generator of primitives and signals
-    __primitives        = None # generated primitive will be stored here
-    __has_same_output   = None # callable evaluating a signal sample (-> bool)
+    __generator             = None  # static generator of primitives and signals
+    __has_same_output       = None  # callable evaluating a signal sample (-> bool)
+    __primitives            = []    # generated primitives will be stored here
+    __children_primitives   = {}    # dict parentship between primitives
 
     # (instance attribute)
     # The conjunction of these primitives represents the STL instance.
     _tup: FrozenSet[int] = frozenset()
+    # index of the last added primitive
+    _last_index: int = None
 
     def initialize(self, generator: Generator, has_same_output: Callable):
         STL.__generator = generator
         STL.__primitives = generator.generate_primitives()
         STL.__has_same_output = has_same_output
+        STL.__children_primitives = {
+            parent: {child for child in range(len(STL.__primitives))
+                if STL.__primitives[child].is_child_of(STL.__primitives[parent])} 
+            for parent in range(len(STL.__primitives))}
         return len(STL.__primitives)
 
     def satisfy(self, s: np.ndarray) -> bool:
@@ -212,14 +240,20 @@ class STL(Node):
         return False
     
     def find_children(self) -> Set[STL]:
-        return {STL(self._tup.union([i]))
-            for i in range(len(STL.__primitives))} - {self}
+        children1 = {STL(self._tup.union([i]), i)
+                    for i in range(len(STL.__primitives))} - {self}
+        
+        if self._last_index is None: 
+            return children1
+        
+        children_primitives = STL.__children_primitives[self._last_index]
+        children2 = {STL(self._tup.union([i]) - {self._last_index}, i)
+                    for i in children_primitives}
+        
+        return children1.union(children2)
 
     def find_random_child(self) -> STL:
-        i = np.random.randint(len(STL.__primitives))
-        while i in self._tup:
-            i = np.random.randint(len(STL.__primitives))
-        return STL(self._tup.union([i]))
+        return None
 
     def reward(self, batch_size) -> int:
         r = 0
@@ -229,7 +263,7 @@ class STL(Node):
         return r
 
     def __hash__(self):
-        return hash(self._tup)
+        return hash((self._tup, self._last_index))
 
     def __eq__(self, other):
         return isinstance(other, STL) and hash(self) == hash(other)

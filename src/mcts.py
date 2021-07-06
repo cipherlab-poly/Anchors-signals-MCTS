@@ -7,13 +7,14 @@ Modified from:
 from abc import ABC, abstractmethod
 from collections import defaultdict
 import math
+from random import choice
 
 
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
     batch_size: int = 256
-    def __init__(self, exploration_weight=math.sqrt(2)):
+    def __init__(self, exploration_weight=1):
         self.Q = defaultdict(int)  # total reward of each node
         self.N = defaultdict(int)  # total visit count for each node
         self.children = dict()  # children of each node
@@ -27,7 +28,12 @@ class MCTS:
         if node not in self.children:
             return node.find_random_child()
 
-        return max(self.children[node], key=lambda n: self.N[n])
+        def score(n):
+            if not self.N[n]:
+                return float('-inf')
+            return self.Q[n]/self.N[n]
+
+        return max(self.children[node], key=score)#lambda n: self.N[n])
 
     def do_rollout(self, node):
         "Make the tree one layer better. (Train for one iteration.)"
@@ -82,7 +88,9 @@ class MCTS:
                 log_N_vertex / self.N[n]
             )
 
-        return max(self.children[node], key=uct)
+        best0 = max(self.children[node], key=uct)
+        bests = [best for best in self.children[node] if uct(best) == uct(best0)]
+        return choice(bests)
 
 
 class Node(ABC):

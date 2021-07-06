@@ -51,7 +51,7 @@ def explain_thermostat(params):
     tm.simulate(slen)
 
     params['s'] = np.array([tm.temps])
-    params['srange'] = [(0, (19, 21, 100))]
+    params['srange'] = [(0, (19, 21, 10))]
     params['black_box'] = tm.black_box
     params['y'] = tm.on
 
@@ -138,8 +138,8 @@ def main():
     logging.info(f'Done. {nb_primitives} primitives.')
     while True:
         logging.info('Choosing best primitive...')
-        for i in range(nb_primitives):
-            print(f'{i}/{nb_primitives} \r', end='')
+        for i in range(2*nb_primitives):
+            print(f'{i}/{2*nb_primitives} \r', end='')
             tree.do_rollout(stl)
         stl = tree.choose(stl)
         q, n = tree.Q[stl], tree.N[stl]
