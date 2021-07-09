@@ -36,7 +36,7 @@ params = {
     'y': None,
     'black_box': None,
     'tau': 0.95,
-    'rho': 0.05,
+    'rho': 0.01,
 }
 
 def explain_thermostat(params):
@@ -51,7 +51,7 @@ def explain_thermostat(params):
     tm.simulate(slen)
 
     params['s'] = np.array([tm.temps])
-    params['srange'] = [(0, (19, 21, 10))]
+    params['srange'] = [(0, (19, 21, 20))]
     params['black_box'] = tm.black_box
     params['y'] = tm.on
 

@@ -14,10 +14,10 @@ class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
     batch_size: int = 256
-    def __init__(self, exploration_weight=1):
-        self.Q = defaultdict(int)  # total reward of each node
-        self.N = defaultdict(int)  # total visit count for each node
-        self.children = dict()  # children of each node
+    def __init__(self, exploration_weight=math.sqrt(2)):
+        self.Q = defaultdict(int)   # total reward of each node
+        self.N = defaultdict(int)   # total visit count for each node
+        self.children = dict()      # children of each node
         self.exploration_weight = exploration_weight
 
     def choose(self, node):

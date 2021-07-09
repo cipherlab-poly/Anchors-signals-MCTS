@@ -60,13 +60,13 @@ class Primitive:
         if parent == self or parent._comp != self._comp or parent._i != self._i:
             return False
         
-        cond1 = parent._typ == 'G' and parent._a <= self._a and self._b <= parent._b 
-        cond2 = self._typ == 'F' and self._a <= parent._a and parent._b <= self._b
+        cond1 = parent._typ == 'F' and parent._a <= self._a and self._b <= parent._b 
+        cond2 = self._typ == 'G' and self._a <= parent._a and parent._b <= self._b
         if cond1 or cond2:
             if self._comp == '<':
-                return parent._mu <= self._mu
+                return parent._mu >= self._mu
             elif self._comp == '>':
-                return self._mu <= parent._mu
+                return self._mu >= parent._mu
             else:
                 return self._mu == parent._mu
         return False
@@ -76,6 +76,8 @@ class Primitive:
         return self.robust(s) > 0
 
     def __hash__(self):
+        if self._a == self._b:
+            return hash(('F', self._a, self._b, self._i, self._comp, self._mu))
         return hash((self._typ, self._a, self._b, self._i, self._comp, self._mu))
 
     def __eq__(self, other):
@@ -214,7 +216,8 @@ class STL(Node):
     __generator             = None  # static generator of primitives and signals
     __has_same_output       = None  # callable evaluating a signal sample (-> bool)
     __primitives            = []    # generated primitives will be stored here
-    __children_primitives   = {}    # dict parentship between primitives
+    __children_primitives   = {}    # dict {parent: children} between primitives
+    __parents_primitives    = {}    # dict {child: parents}   between primitives
 
     # (instance attribute)
     # The conjunction of these primitives represents the STL instance.
@@ -225,12 +228,21 @@ class STL(Node):
     def initialize(self, generator: Generator, has_same_output: Callable):
         STL.__generator = generator
         STL.__primitives = generator.generate_primitives()
-        STL.__has_same_output = has_same_output
-        STL.__children_primitives = {
-            parent: {child for child in range(len(STL.__primitives))
-                if STL.__primitives[child].is_child_of(STL.__primitives[parent])} 
-            for parent in range(len(STL.__primitives))}
-        return len(STL.__primitives)
+        STL.__has_same_output = has_same_output        
+        length = len(STL.__primitives)
+        STL.__children_primitives = {parent: {child for child in range(length)
+            if STL.__primitives[child].is_child_of(STL.__primitives[parent])} 
+            for parent in range(length)}
+        STL.__parents_primitives = {child: {parent for parent in range(length)
+            if STL.__primitives[child].is_child_of(STL.__primitives[parent])} 
+            for child in range(length)}
+        """
+        for i, primitive in enumerate(STL.__primitives):
+            children = ', '.join(str(STL.__primitives[j])
+                for j in STL.__children_primitives[i])
+            print(f'{primitive}:\n\t{children}')
+        """
+        return length
 
     def satisfy(self, s: np.ndarray) -> bool:
         "Verify if STL is satisfied by signal `s`"
@@ -240,17 +252,17 @@ class STL(Node):
         return False
     
     def find_children(self) -> Set[STL]:
-        children1 = {STL(self._tup.union([i]), i)
-                    for i in range(len(STL.__primitives))} - {self}
-        
+        length = len(STL.__primitives)
         if self._last_index is None: 
-            return children1
-        
+            return {STL(frozenset({i}), i) for i in range(length)}
+
         children_primitives = STL.__children_primitives[self._last_index]
+        parents_primitives = STL.__parents_primitives[self._last_index]
+        children1 = {STL(self._tup.union([i]), i) 
+                        for i in set(range(length)) - parents_primitives}
         children2 = {STL(self._tup.union([i]) - {self._last_index}, i)
-                    for i in children_primitives}
-        
-        return children1.union(children2)
+                        for i in children_primitives}
+        return children1.union(children2) - {self}
 
     def find_random_child(self) -> STL:
         return None
