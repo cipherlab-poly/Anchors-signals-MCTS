@@ -13,27 +13,21 @@ from random import choice
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
-    batch_size: int = 256
-    def __init__(self, exploration_weight=math.sqrt(2)):
+    def __init__(self):
         self.Q = defaultdict(int)   # total reward of each node
         self.N = defaultdict(int)   # total visit count for each node
         self.children = dict()      # children of each node
-        self.exploration_weight = exploration_weight
+        self.batch_size = 256
 
     def choose(self, node):
         "Choose the best successor of node. (Choose a move in the game)"
-        if node.is_terminal():
-            raise RuntimeError(f"choose called on terminal node {node}")
-
-        if node not in self.children:
-            return node.find_random_child()
 
         def score(n):
             if not self.N[n]:
                 return float('-inf')
             return self.Q[n]/self.N[n]
 
-        return max(self.children[node], key=score)#lambda n: self.N[n])
+        return max(self.children[node], key=score)
 
     def do_rollout(self, node):
         "Make the tree one layer better. (Train for one iteration.)"
@@ -70,11 +64,12 @@ class MCTS:
     
     def _backpropagate(self, path, reward):
         "Send the reward back up to the ancestors of the leaf"
-        for node in reversed(path):
+        leaf = path[-1]
+        for node in leaf.find_parents().union(path):
             self.N[node] += self.batch_size
             self.Q[node] += reward
 
-    def _uct_select(self, node):
+    def _uct_select(self, node, exploration_weight=math.sqrt(2)):
         "Select a child of node, balancing exploration & exploitation"
 
         # All children of node should already be expanded:
@@ -84,7 +79,7 @@ class MCTS:
 
         def uct(n):
             "Upper confidence bound for trees"
-            return self.Q[n] / self.N[n] + self.exploration_weight * math.sqrt(
+            return self.Q[n] / self.N[n] + exploration_weight * math.sqrt(
                 log_N_vertex / self.N[n]
             )
 
@@ -106,14 +101,9 @@ class Node(ABC):
         return set()
 
     @abstractmethod
-    def find_random_child(self):
-        "Random successor of this board state (for more efficient simulation)"
-        return None
-
-    @abstractmethod
-    def is_terminal(self):
-        "Returns True if the node has no children"
-        return True
+    def find_parents(self):
+        "Ancestors for which rewards are backpropagated"
+        return set()
 
     @abstractmethod
     def reward(self, batch_size):

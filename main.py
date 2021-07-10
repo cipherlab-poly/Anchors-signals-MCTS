@@ -108,8 +108,8 @@ def explain_fault_at(params):
     params['black_box'] = at.black_box
     params['y'] = at.black_box(params['s'])
 
-def has_same_output(sample):
-    return params['black_box'](sample) == params['y']
+def get_reward(sample):
+    return int(params['black_box'](sample) == params['y'])
 
 def main():
     explain_thermostat(params)
@@ -134,7 +134,7 @@ def main():
     stl = STL()
     generator = Generator(params['s'], params['srange'], params['rho'])
     logging.info('Initializing primitives...')
-    nb_primitives = stl.initialize(generator, has_same_output)
+    nb_primitives = stl.initialize(generator, get_reward)
     logging.info(f'Done. {nb_primitives} primitives.')
     while True:
         logging.info('Choosing best primitive...')

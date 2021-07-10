@@ -214,7 +214,7 @@ class Generator:
 class STL(Node):
     # (class attributes) to be set during initialization
     __generator             = None  # static generator of primitives and signals
-    __has_same_output       = None  # callable evaluating a signal sample (-> bool)
+    __get_reward            = None  # callable evaluating a signal sample (0 or 1)
     __primitives            = []    # generated primitives will be stored here
     __children_primitives   = {}    # dict {parent: children} between primitives
     __parents_primitives    = {}    # dict {child: parents}   between primitives
@@ -225,10 +225,10 @@ class STL(Node):
     # index of the last added primitive
     _last_index: int = None
 
-    def initialize(self, generator: Generator, has_same_output: Callable):
+    def initialize(self, generator: Generator, get_reward: Callable):
         STL.__generator = generator
         STL.__primitives = generator.generate_primitives()
-        STL.__has_same_output = has_same_output        
+        STL.__get_reward = get_reward
         length = len(STL.__primitives)
         STL.__children_primitives = {parent: {child for child in range(length)
             if STL.__primitives[child].is_child_of(STL.__primitives[parent])} 
@@ -236,20 +236,11 @@ class STL(Node):
         STL.__parents_primitives = {child: {parent for parent in range(length)
             if STL.__primitives[child].is_child_of(STL.__primitives[parent])} 
             for child in range(length)}
-        """
-        for i, primitive in enumerate(STL.__primitives):
-            children = ', '.join(str(STL.__primitives[j])
-                for j in STL.__children_primitives[i])
-            print(f'{primitive}:\n\t{children}')
-        """
         return length
 
     def satisfy(self, s: np.ndarray) -> bool:
         "Verify if STL is satisfied by signal `s`"
         return all(STL.__primitives[i].satisfy(s) for i in self._tup)
-
-    def is_terminal(self) -> bool:
-        return False
     
     def find_children(self) -> Set[STL]:
         length = len(STL.__primitives)
@@ -264,14 +255,18 @@ class STL(Node):
                         for i in children_primitives}
         return children1.union(children2) - {self}
 
-    def find_random_child(self) -> STL:
-        return None
+    def find_parents(self) -> Set[STL]:
+        if self._last_index is None:
+            return set()
+        parents_primitives = STL.__parents_primitives[self._last_index]
+        return {STL(self._tup.union([i]) - {self._last_index}, i)
+                    for i in parents_primitives}
 
     def reward(self, batch_size) -> int:
         r = 0
         for _ in range(batch_size):
             sample = STL.__generator.sample_signal_with_condition(self)
-            r += int(STL.__has_same_output(sample))
+            r += STL.__get_reward(sample)
         return r
 
     def __hash__(self):
