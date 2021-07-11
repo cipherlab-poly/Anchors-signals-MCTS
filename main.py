@@ -48,7 +48,9 @@ def explain_thermostat(params):
     slen = 5       # Signal length
 
     tm = Thermostat(19, 20, 2)
-    tm.simulate(slen)
+    #tm.simulate(slen)
+    tm.temps = [19.53, 19.33, 19.83, 20.08, 19.37]
+    tm.on = 0
 
     params['s'] = np.array([tm.temps])
     params['srange'] = [(0, (19, 21, 20))]
@@ -130,7 +132,7 @@ def main():
         return
 
     logging.info(f"{params['s']} => {params['y']}")
-    tree = MCTS()
+    tree = MCTS(method='fuse')#'uct1tuned')
     stl = STL()
     generator = Generator(params['s'], params['srange'], params['rho'])
     logging.info('Initializing primitives...')
@@ -142,7 +144,7 @@ def main():
             print(f'{i}/{2*nb_primitives} \r', end='')
             tree.do_rollout(stl)
         stl = tree.choose(stl)
-        q, n = tree.Q[stl], tree.N[stl]
+        q, n = tree.qMC[stl], tree.nMC[stl]
         logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')
         if q/n > params['tau']:
             return

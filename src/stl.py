@@ -5,8 +5,6 @@ import itertools
 from typing import List, FrozenSet, Callable
 from dataclasses import dataclass
 
-from .mcts import Node
-
 @dataclass
 class Primitive:
     "Ex: Primitive('G', 0, 5, '>', 20) <=> G[0,5](s_i > 20)"
@@ -211,7 +209,7 @@ class Generator:
 
 
 @dataclass
-class STL(Node):
+class STL:
     # (class attributes) to be set during initialization
     __generator             = None  # static generator of primitives and signals
     __get_reward            = None  # callable evaluating a signal sample (0 or 1)
@@ -221,10 +219,14 @@ class STL(Node):
 
     # (instance attribute)
     # The conjunction of these primitives represents the STL instance.
-    _tup: FrozenSet[int] = frozenset()
+    _indices: FrozenSet[int] = frozenset()
     # index of the last added primitive
-    _last_index: int = None
+    _action: int = None
 
+    def __post_init__(self):
+        for child in self._indices.copy():
+            self._indices -= STL.__parents_primitives[child]
+    
     def initialize(self, generator: Generator, get_reward: Callable):
         STL.__generator = generator
         STL.__primitives = generator.generate_primitives()
@@ -240,42 +242,41 @@ class STL(Node):
 
     def satisfy(self, s: np.ndarray) -> bool:
         "Verify if STL is satisfied by signal `s`"
-        return all(STL.__primitives[i].satisfy(s) for i in self._tup)
+        return all(STL.__primitives[i].satisfy(s) for i in self._indices)
     
-    def find_children(self) -> Set[STL]:
+    def get_children(self) -> Set[STL]:
         length = len(STL.__primitives)
-        if self._last_index is None: 
+        if self._action is None: 
             return {STL(frozenset({i}), i) for i in range(length)}
 
-        children_primitives = STL.__children_primitives[self._last_index]
-        parents_primitives = STL.__parents_primitives[self._last_index]
-        children1 = {STL(self._tup.union([i]), i) 
-                        for i in set(range(length)) - parents_primitives}
-        children2 = {STL(self._tup.union([i]) - {self._last_index}, i)
-                        for i in children_primitives}
-        return children1.union(children2) - {self}
+        parents_primitives = STL.__parents_primitives[self._action]
+        return {self.apply_action(action)
+                for action in set(range(length)) - parents_primitives} - {self}
 
-    def find_parents(self) -> Set[STL]:
-        if self._last_index is None:
-            return set()
-        parents_primitives = STL.__parents_primitives[self._last_index]
-        return {STL(self._tup.union([i]) - {self._last_index}, i)
-                    for i in parents_primitives}
+    def get_parents(self) -> Set[STL]:
+        parents = [STL.__parents_primitives[i].union({i}) for i in self._indices]
+        return {STL(forzenset(r)) for r in itertools.product(*parents)} - {self}
 
-    def reward(self, batch_size) -> int:
+    def reward(self, batch_size: int) -> int:
         r = 0
         for _ in range(batch_size):
             sample = STL.__generator.sample_signal_with_condition(self)
             r += STL.__get_reward(sample)
         return r
 
+    def apply_action(self, action: int) -> STL:
+        return STL(self._indices.union([action]), action)
+
+    def get_action(self) -> int:
+        return self._action
+
     def __hash__(self):
-        return hash((self._tup, self._last_index))
+        return hash(self._indices)
 
     def __eq__(self, other):
         return isinstance(other, STL) and hash(self) == hash(other)
 
     def __repr__(self):
-        if not len(self._tup):
+        if not len(self._indices):
             return 'T'
-        return '^'.join(repr(STL.__primitives[i]) for i in self._tup)
+        return '^'.join(repr(STL.__primitives[i]) for i in self._indices)
