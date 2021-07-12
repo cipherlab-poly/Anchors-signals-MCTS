@@ -6,15 +6,23 @@ Inspired from:
 """
 from collections import defaultdict
 import math
+import itertools
+import heapq
+
+# visual
+import networkx as nx
+import matplotlib.pyplot as plt
+import pydot
+from networkx.drawing.nx_pydot import graphviz_layout
 
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
-    batch_size: int = 256
-    def __init__(self, method: str = 'uct'):
-        assert(method in {'uct', 'uct1tuned', 'fuse'})
-        self.method = method
-        
+    def __init__(self, batch_size=256, method='fuse', visual=False):
+        self.batch_size = batch_size
+        self.method     = method        # uct / ucb1tuned / fuse
+        self.visual     = visual
+
         self.children = {}
         
         # Monte-Carlo (score of a node)
@@ -30,25 +38,31 @@ class MCTS:
             self.qRAVE = defaultdict(int)
             self.nRAVE = defaultdict(int)
 
+        if self.visual:
+            self.G = nx.DiGraph()
+            self.colors = list(itertools.product(*([(0, 1)]*3)))
+            self.colors.remove((0, 0, 0))
+            self.colors.remove((1, 1, 1))
+
     def choose(self, node):
         "Choose the best successor of node. (Choose a move in the game)"
 
         def score(n):
             if not self.qMC[n]:
-                return float('-inf')
-            return self.qMC[n]/self.nMC[n]
+                return (float('-inf'), 0)
+            return (self.qMC[n]/self.nMC[n], self.nMC[n])
 
-        return max(self.children[node], key=score)
+        return heapq.nlargest(5, self.children[node], key=score)
 
     def do_rollout(self, node):
         "Make the tree one layer better. (Train for one iteration.)"
-        path = self._select(node)
+        path = self._select_path(node)
         leaf = path[-1]
         self._expand(leaf)
         reward = self._simulate(leaf)
         self._backpropagate(path, reward)
 
-    def _select(self, node):
+    def _select_path(self, node):
         "Find an unexplored descendent of `node`"
         path = []
         while True:
@@ -61,13 +75,7 @@ class MCTS:
                 n = unexplored.pop()
                 path.append(n)
                 return path
-            
-            if self.method == 'uct':
-                node = self._uct_select(node)
-            elif self.method == 'uct1tuned':
-                node = self._ucb1tuned_select(node)
-            else:
-                node = self._fuse_select(node)
+            node = self._select(node)
 
     def _expand(self, node):
         "Update the `children` dict with the children of `node`"
@@ -96,7 +104,7 @@ class MCTS:
                     self.nRAVE[node1] += self.batch_size
                     self.qRAVE[node1] += reward
 
-    def _uct_select(self, node, ce=2):
+    def _select(self, node, ce=2, c=100, cl=100):
         "Select a child of node, balancing exploration & exploitation"
 
         log_N_vertex = math.log(self.nMC[node])
@@ -106,27 +114,10 @@ class MCTS:
             sqrt = math.sqrt(ce * log_N_vertex / self.nMC[n])
             return mu + sqrt
 
-        return max(self.children[node], key=uct)
-
-    def _ucb1tuned_select(self, node, ce=2):
-        "Select a child of node, balancing exploration & exploitation"
-
-        log_N_vertex = math.log(self.nMC[node])
-
         def ucb1tuned(n):
             mu = self.qMC[n] / self.nMC[n]
             sqrt = math.sqrt(ce * log_N_vertex / self.nMC[n])
             return mu + sqrt * math.sqrt(min(0.25, mu * (1 - mu) + sqrt))
-        
-        return max(self.children[node], key=ucb1tuned)
-
-    def _fuse_select(self, node, ce=2, c=100, cl=100):
-        "Select a child of node, balancing exploration & exploitation"
-
-        # All children of node should already be expanded:
-        assert all(n in self.children for n in self.children[node])
-
-        log_N_vertex = math.log(self.nMC[node])
 
         def fuse(n):
             action = n.get_action()
@@ -140,4 +131,39 @@ class MCTS:
                 (1 - beta) * lRAVE + beta * gRAVE
             ) + sqrt * math.sqrt(min(0.25, mu * (1 - mu) + sqrt))
 
-        return max(self.children[node], key=fuse)
+        return max(self.children[node], key=eval(self.method))
+
+    def visualize(self, prog='twopi'):
+        if self.visual:
+            for node in self.children:
+                self.G.add_node(node)
+                self.G.add_edges_from(
+                    [(node, child) for child in self.children[node]])
+            pos = self._layout(prog=prog)
+            node_color = [self.colors[len(n)] for n in self.G.nodes]
+            node_labels = {n: self._node_label(n) for n in self.G.nodes}
+            nx.draw(self.G, pos=pos, node_color=node_color, node_size=100, 
+                width=0.5, edge_color='grey', with_labels=True, 
+                font_size=6, font_weight='heavy')
+            label_pos = {n: (x, y-8) for (n, (x, y)) in pos.items()}
+            nx.draw_networkx_labels(self.G, label_pos, labels=node_labels, 
+                font_size=6, font_weight='heavy', font_color='r')
+            plt.show()
+
+    def _node_label(self, node):
+        q = self.qMC[node]
+        n = self.nMC[node]
+        if n:
+            return f'{q}/{n}={q/n:5.2%}'
+        return '0/0'
+    
+    def _layout(self, prog):
+        auxG = nx.DiGraph(self.G)
+        for node1 in auxG.nodes:
+            for node2 in auxG.nodes:
+                diff = len(node2) - len(node1)
+                if diff == 1 and node1.is_parent_of(node2):
+                    auxG.add_edge(node1, node2)
+                elif (node1, node2) in auxG.edges:
+                    auxG.remove_edge(node1, node2)    
+        return graphviz_layout(auxG, prog=prog)

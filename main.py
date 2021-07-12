@@ -1,8 +1,9 @@
 import numpy as np
 np.set_printoptions(precision=2, suppress=True)
+np.random.seed(42)
 
-from src.mcts import MCTS
-from src.stl import STL, Generator
+from mcts import MCTS
+from stl import STL, Generator
 
 import logging
 logging.basicConfig(level=logging.INFO, 
@@ -132,7 +133,7 @@ def main():
         return
 
     logging.info(f"{params['s']} => {params['y']}")
-    tree = MCTS(method='fuse')#'uct1tuned')
+    tree = MCTS(method='fuse', visual=False)
     stl = STL()
     generator = Generator(params['s'], params['srange'], params['rho'])
     logging.info('Initializing primitives...')
@@ -140,13 +141,16 @@ def main():
     logging.info(f'Done. {nb_primitives} primitives.')
     while True:
         logging.info('Choosing best primitive...')
-        for i in range(2*nb_primitives):
+        for i in range(1, 2*nb_primitives+1):
             print(f'{i}/{2*nb_primitives} \r', end='')
             tree.do_rollout(stl)
-        stl = tree.choose(stl)
-        q, n = tree.qMC[stl], tree.nMC[stl]
-        logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')
-        if q/n > params['tau']:
+        tree.visualize()
+        stls = tree.choose(stl)
+        for stl in stls:
+            q, n = tree.qMC[stl], tree.nMC[stl]
+            logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')
+        stl = stls[0]
+        if tree.qMC[stl]/tree.nMC[stl] > params['tau']:
             return
 
 if __name__ == '__main__':

@@ -106,55 +106,57 @@ class Generator:
             if self._srange[d][0] == 0:
                 smin, smax, stepsize = self._srange[d][1]
                 mus = np.linspace(smin, smax, num=stepsize, endpoint=False)[1:]
-                normalize = smax - smin
+                norm = smax - smin
                 for i in range(slen):
-                    l = [['F', 'G'], [i], range(i, slen), [d], ['>', '<']]
-                    for r in itertools.product(*l):
-                        stop = False
-                        phi0 = Primitive(*r, mus[0], normalize)
-                        phi1 = Primitive(*r, mus[-1], normalize)
-                        if phi0.robust(self._s) >= self._rho:
-                            u = 0
-                            if phi1.robust(self._s) < self._rho:
-                                l = len(mus) - 1
-                                from_beginning = True
-                            else:
-                                stop = True
-                                from_beginning = False
-                        else:
-                            from_beginning = False
-                            l = 0
-                            if phi1.robust(self._s) >= self._rho:
-                                u = len(mus) - 1
-                            else:
-                                u = len(mus)
-                                stop = True
-                        
-                        if not stop:
-                            while True:
-                                phi0 = Primitive(*r, mus[l], normalize)
-                                phi1 = Primitive(*r, mus[u], normalize)
-                                if (phi0.robust(self._s) >= self._rho and 
-                                        phi1.robust(self._s) >= self._rho):
-                                    break
-                                elif (phi0.robust(self._s) < self._rho and 
-                                        phi1.robust(self._s) < self._rho):
-                                    break
-                                q = (u + l) // 2
-                                if u == q or l == q:
-                                    break
-                                phi2 = Primitive(*r, mus[q], normalize)
-                                if phi2.robust(self._s) >= self._rho:
-                                    u = q
+                    for t in ['F', 'G']:
+                        j = i + int(t == 'G')
+                        l = [[t], [i], range(j, slen), [d], ['>', '<']]
+                        for r in itertools.product(*l):
+                            stop = False
+                            phi0 = Primitive(*r, mus[0], norm)
+                            phi1 = Primitive(*r, mus[-1], norm)
+                            if phi0.robust(self._s) >= self._rho:
+                                u = 0
+                                if phi1.robust(self._s) < self._rho:
+                                    l = len(mus) - 1
+                                    from_beginning = True
                                 else:
-                                    l = q
-                        
-                        if from_beginning:
-                            for q in range(u+1):
-                                result.append(Primitive(*r, mus[q], normalize))
-                        else:
-                            for q in range(u, len(mus)):
-                                result.append(Primitive(*r, mus[q], normalize))
+                                    stop = True
+                                    from_beginning = False
+                            else:
+                                from_beginning = False
+                                l = 0
+                                if phi1.robust(self._s) >= self._rho:
+                                    u = len(mus) - 1
+                                else:
+                                    u = len(mus)
+                                    stop = True
+                            
+                            if not stop:
+                                while True:
+                                    phi0 = Primitive(*r, mus[l], norm)
+                                    phi1 = Primitive(*r, mus[u], norm)
+                                    if (phi0.robust(self._s) >= self._rho and 
+                                            phi1.robust(self._s) >= self._rho):
+                                        break
+                                    elif (phi0.robust(self._s) < self._rho and 
+                                            phi1.robust(self._s) < self._rho):
+                                        break
+                                    q = (u + l) // 2
+                                    if u == q or l == q:
+                                        break
+                                    phi2 = Primitive(*r, mus[q], norm)
+                                    if phi2.robust(self._s) >= self._rho:
+                                        u = q
+                                    else:
+                                        l = q
+                            
+                            if from_beginning:
+                                for q in range(u+1):
+                                    result.append(Primitive(*r, mus[q], norm))
+                            else:
+                                for q in range(u, len(mus)):
+                                    result.append(Primitive(*r, mus[q], norm))
                                 
             # d-th component is discrete
             elif self._srange[d][0] == 1:
@@ -207,24 +209,30 @@ class Generator:
             sample = self._sample_signal()
         return sample
 
+class STL(object):
+    __cache = {}
 
-@dataclass
-class STL:
     # (class attributes) to be set during initialization
     __generator             = None  # static generator of primitives and signals
     __get_reward            = None  # callable evaluating a signal sample (0 or 1)
     __primitives            = []    # generated primitives will be stored here
-    __children_primitives   = {}    # dict {parent: children} between primitives
-    __parents_primitives    = {}    # dict {child: parents}   between primitives
+    __parents_primitives    = {}    # dict {child: parents} between primitives
 
-    # (instance attribute)
-    # The conjunction of these primitives represents the STL instance.
-    _indices: FrozenSet[int] = frozenset()
-    # index of the last added primitive
-    _action: int = None
-
-    def __post_init__(self):
-        for child in self._indices.copy():
+    def __new__(cls, indices: FrozenSet[int]=frozenset(), action: int=None):
+        for child in indices.copy():
+            indices -= STL.__parents_primitives[child]
+        
+        if indices in STL.__cache:
+            return STL.__cache[indices]
+        else:
+            o = object.__new__(cls)
+            STL.__cache[indices] = o
+            return o
+    
+    def __init__(self, indices: FrozenSet[int]=frozenset(), action: int=None):
+        self._indices = indices
+        self._action = action
+        for child in indices:
             self._indices -= STL.__parents_primitives[child]
     
     def initialize(self, generator: Generator, get_reward: Callable):
@@ -232,9 +240,6 @@ class STL:
         STL.__primitives = generator.generate_primitives()
         STL.__get_reward = get_reward
         length = len(STL.__primitives)
-        STL.__children_primitives = {parent: {child for child in range(length)
-            if STL.__primitives[child].is_child_of(STL.__primitives[parent])} 
-            for parent in range(length)}
         STL.__parents_primitives = {child: {parent for parent in range(length)
             if STL.__primitives[child].is_child_of(STL.__primitives[parent])} 
             for child in range(length)}
@@ -270,11 +275,14 @@ class STL:
     def get_action(self) -> int:
         return self._action
 
+    def is_parent_of(self, child) -> bool:
+        return self._indices.issubset(child._indices)
+
+    def __len__(self):
+        return len(self._indices)
+
     def __hash__(self):
         return hash(self._indices)
-
-    def __eq__(self, other):
-        return isinstance(other, STL) and hash(self) == hash(other)
 
     def __repr__(self):
         if not len(self._indices):
