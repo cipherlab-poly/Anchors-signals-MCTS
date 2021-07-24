@@ -18,25 +18,17 @@ from networkx.drawing.nx_pydot import graphviz_layout
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
-    def __init__(self, batch_size=256, method='fuse', visual=False):
+    def __init__(self, batch_size=256, method='ucb1tuned', visual=False):
         self.batch_size = batch_size
-        self.method     = method        # uct / ucb1tuned / fuse
+        self.method     = method        # uct / ucb1tuned
         self.visual     = visual
 
-        self.children = {}
+        self.children = defaultdict(set)
+        self.ancestors = defaultdict(set)
         
         # Monte-Carlo (score of a node)
         self.qMC = defaultdict(int)
         self.nMC = defaultdict(int)
-
-        if method == 'fuse':
-            # g-RAVE (score of each action)
-            self.qAction = defaultdict(int)
-            self.nAction = defaultdict(int)
-            
-            # l-RAVE (score of each action after visiting a node)"
-            self.qRAVE = defaultdict(int)
-            self.nRAVE = defaultdict(int)
 
         if self.visual:
             self.G = nx.DiGraph()
@@ -56,25 +48,20 @@ class MCTS:
 
     def do_rollout(self, node):
         "Make the tree one layer better. (Train for one iteration.)"
-        path = self._select_path(node)
-        leaf = path[-1]
-        self._expand(leaf)
+        leaf = self._select_leaf(node)
         reward = self._simulate(leaf)
-        self._backpropagate(path, reward)
+        self._backpropagate(leaf, reward)
+        self._expand(leaf)
 
-    def _select_path(self, node):
+    def _select_leaf(self, node):
         "Find an unexplored descendent of `node`"
-        path = []
         while True:
-            path.append(node)
             if node not in self.children or not self.children[node]:
                 # node is either unexplored or terminal
-                return path
+                return node
             unexplored = self.children[node] - self.children.keys()
             if unexplored:
-                n = unexplored.pop()
-                path.append(n)
-                return path
+                return unexplored.pop()
             node = self._select(node)
 
     def _expand(self, node):
@@ -82,27 +69,20 @@ class MCTS:
         if node in self.children:
             return  # already expanded
         self.children[node] = node.get_children()
+        ancestors = self.ancestors.pop(node) # for back-propagation
+        for child in self.children[node]:
+            self.ancestors[child].add(node)
+            self.ancestors[child].update(ancestors)
 
     def _simulate(self, node):
-        "Returns the reward for a random simulation (to completion) of `node`"
+        "Return the reward for a random simulation of `node`"
         return node.reward(self.batch_size)
     
-    def _backpropagate(self, path, reward):
-        "Send the reward back up to the ancestors of the leaf"
-        leaf = path[-1]
-        actions = [node.get_action() for node in path]
-        for i in range(len(path)):#leaf.get_parents().union(path):
-            node = path[i]
-            self.nMC[node] += self.batch_size
-            self.qMC[node] += reward
-            
-            if self.method == 'fuse' and i:
-                self.nAction[actions[i]] += self.batch_size
-                self.qAction[actions[i]] += reward
-                for j in range(i, len(path)):
-                    node1 = node.apply_action(actions[j])
-                    self.nRAVE[node1] += self.batch_size
-                    self.qRAVE[node1] += reward
+    def _backpropagate(self, node, reward):
+        "Send `reward` back up to the ancestors of `node`"
+        for ancestor in self.ancestors[node].union({node}):
+            self.nMC[ancestor] += self.batch_size
+            self.qMC[ancestor] += reward
 
     def _select(self, node, ce=2, c=100, cl=100):
         "Select a child of node, balancing exploration & exploitation"
@@ -118,18 +98,6 @@ class MCTS:
             mu = self.qMC[n] / self.nMC[n]
             sqrt = math.sqrt(ce * log_N_vertex / self.nMC[n])
             return mu + sqrt * math.sqrt(min(0.25, mu * (1 - mu) + sqrt))
-
-        def fuse(n):
-            action = n.get_action()
-            mu = self.qMC[n] / self.nMC[n]
-            sqrt = math.sqrt(ce * log_N_vertex / self.nMC[n])
-            alpha = c / (c + self.nRAVE[n])
-            beta = cl / (cl + self.nAction[action])
-            lRAVE = self.qRAVE[n] / self.nRAVE[n]
-            gRAVE = self.qAction[action] / self.nAction[action]
-            return (1 - alpha) * mu + alpha * (
-                (1 - beta) * lRAVE + beta * gRAVE
-            ) + sqrt * math.sqrt(min(0.25, mu * (1 - mu) + sqrt))
 
         return max(self.children[node], key=eval(self.method))
 

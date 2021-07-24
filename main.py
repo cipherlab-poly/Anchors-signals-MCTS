@@ -37,7 +37,7 @@ params = {
     'y': None,
     'black_box': None,
     'tau': 0.95,
-    'rho': 0.01,
+    'rho': 0.01
 }
 
 def explain_thermostat(params):
@@ -133,7 +133,7 @@ def main():
         return
 
     logging.info(f"{params['s']} => {params['y']}")
-    tree = MCTS(method='fuse', visual=False)
+    tree = MCTS(visual=False)
     stl = STL()
     generator = Generator(params['s'], params['srange'], params['rho'])
     logging.info('Initializing primitives...')
