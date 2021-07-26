@@ -18,13 +18,17 @@ from networkx.drawing.nx_pydot import graphviz_layout
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
-    def __init__(self, batch_size=256, method='ucb1tuned', visual=False):
+    def __init__(self, batch_size=256, delta=0.01, epsilon=0.01, 
+                    method='ucb1tuned', visual=False):
         self.batch_size = batch_size
         self.method     = method        # uct / ucb1tuned
         self.visual     = visual
 
-        self.children = defaultdict(set)
-        self.ancestors = defaultdict(set)
+        self.delta      = delta
+        self.epsilon    = epsilon
+        
+        self.children   = defaultdict(set)
+        self.ancestors  = defaultdict(set)
         
         # Monte-Carlo (score of a node)
         self.qMC = defaultdict(int)
@@ -38,21 +42,37 @@ class MCTS:
 
     def choose(self, node):
         "Choose the best successor of node. (Choose a move in the game)"
+        return heapq.nlargest(5, self.children[node], key=self.__score)
 
-        def score(n):
-            if not self.qMC[n]:
-                return (float('-inf'), 0)
-            return (self.qMC[n]/self.nMC[n], self.nMC[n])
-
-        return heapq.nlargest(5, self.children[node], key=score)
-
-    def do_rollout(self, node):
-        "Make the tree one layer better. (Train for one iteration.)"
+    def train(self, node):
+        "Rollout the tree from `node` until error is smaller than `epsilon`"
+        err = 1.0
+        i = 0
+        while err > self.epsilon:
+            print(f'\033[1;93m Iter {i} Error {err:5.2%}\033[1;m', end='  \r')
+            self._rollout(node)
+            
+            # Hoeffding's bound
+            best = self._select(node)
+            if self.nMC[best]:
+                div = math.sqrt(-math.log(self.delta / 2) / (2*self.nMC[best]))
+                err = min(div, 1.0)
+            i += 1
+        print()
+    
+    def _rollout(self, node):
+        "Make the tree one layer better (train for one iteration)"
         leaf = self._select_leaf(node)
         reward = self._simulate(leaf)
         self._backpropagate(leaf, reward)
         self._expand(leaf)
 
+    def __score(self, node):
+        "Empirical score of `node`"
+        if not self.nMC[node]:
+            return float('-inf')
+        return self.qMC[node] / self.nMC[node]
+    
     def _select_leaf(self, node):
         "Find an unexplored descendent of `node`"
         while True:
@@ -66,8 +86,6 @@ class MCTS:
 
     def _expand(self, node):
         "Update the `children` dict with the children of `node`"
-        if node in self.children:
-            return  # already expanded
         self.children[node] = node.get_children()
         ancestors = self.ancestors.pop(node) # for back-propagation
         for child in self.children[node]:
@@ -80,22 +98,26 @@ class MCTS:
     
     def _backpropagate(self, node, reward):
         "Send `reward` back up to the ancestors of `node`"
-        for ancestor in self.ancestors[node].union({node}):
-            self.nMC[ancestor] += self.batch_size
-            self.qMC[ancestor] += reward
+        for n in self.ancestors[node].union({node}):
+            self.nMC[n] += self.batch_size
+            self.qMC[n] += reward
 
-    def _select(self, node, ce=2, c=100, cl=100):
+    def _select(self, node, ce=2):
         "Select a child of node, balancing exploration & exploitation"
 
         log_N_vertex = math.log(self.nMC[node])
 
         def uct(n):
-            mu = self.qMC[n] / self.nMC[n]
+            if not self.nMC[n]:
+                return float('-inf')
+            mu = self.__score(n)
             sqrt = math.sqrt(ce * log_N_vertex / self.nMC[n])
             return mu + sqrt
 
         def ucb1tuned(n):
-            mu = self.qMC[n] / self.nMC[n]
+            if not self.nMC[n]:
+                return float('-inf')
+            mu = self.__score(n)
             sqrt = math.sqrt(ce * log_N_vertex / self.nMC[n])
             return mu + sqrt * math.sqrt(min(0.25, mu * (1 - mu) + sqrt))
 

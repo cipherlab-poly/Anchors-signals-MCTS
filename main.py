@@ -37,7 +37,9 @@ params = {
     'y': None,
     'black_box': None,
     'tau': 0.95,
-    'rho': 0.01
+    'rho': 0.01,
+    'delta': 0.01,
+    'epsilon': 0.01
 }
 
 def explain_thermostat(params):
@@ -141,9 +143,7 @@ def main():
     logging.info(f'Done. {nb_primitives} primitives.')
     while True:
         logging.info('Choosing best primitive...')
-        for i in range(1, 2*nb_primitives+1):
-            print(f'{i}/{2*nb_primitives} \r', end='')
-            tree.do_rollout(stl)
+        tree.train(stl)
         tree.visualize()
         stls = tree.choose(stl)
         for stl in stls:
