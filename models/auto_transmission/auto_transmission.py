@@ -5,7 +5,7 @@ from joblib import load
 from os.path import *
 
 class AutoTransmission:
-    def __init__(self, throttles, thetas, tdelta=0.1, params={}):
+    def __init__(self, throttles, thetas, tdelta, params={}):
         """
         Parameters
         ----------
@@ -67,7 +67,7 @@ class AutoTransmission:
         case1 = self.gear == 1 and self.vspd < 0
         return case1 or case2 or case3 or case4
 
-    def update(self, noise=True, fault2=False, fault3=False, v_fault1=None):
+    def update(self, noise=True, fault1=False, fault2=False):
         """Updates the state machine. Modified from:
             https://python-control.readthedocs.io/en/0.8.3/cruise-control.html
 
@@ -75,12 +75,9 @@ class AutoTransmission:
         ----------
         noise : bool
             add Gaussian random noise to the sensors (vehicle speed, engine speed)
-        fault1 : float within [0, 1]
-            readings of the vehicle speed sensor are substituted with a random 
-            value within [0, 160] with this probability
-        fault2 : bool
+        fault1 : bool
             unable to engage the fourth gear
-        fault3 : bool
+        fault2 : bool
             gear switches directly from second to fourth and vise versa
         """
         m = self.params.get('m', 1600.)
@@ -96,11 +93,11 @@ class AutoTransmission:
         beta = self.params.get('beta', 0.4)         # peak engine rolloff
 
         throttle = next(self.throttles)
-        ratio = alpha[max(self.gear-1, 0)]
-        omega = ratio * self.vspd/3.6
-        torque = np.clip(Tm * (1 - beta * (omega/omega_m - 1)**2), 0, None)
+        ratio = alpha[max(self.gear - 1, 0)]
+        omega = ratio * self.vspd / 3.6
+        torque = np.clip(Tm * (1 - beta * (omega / omega_m - 1)**2), 0, None)
         F = ratio * torque * throttle
-        self.espd = np.clip(omega*9.55, 0, None)
+        self.espd = np.clip(omega * 9.55, 500, None)
 
         '''
         gravity according to the road slope
@@ -119,7 +116,7 @@ class AutoTransmission:
             Cd:  shape-dependent aerodynamic drag coefficient
             A:   the frontal area of the car
         '''
-        Fa = 1/2 * rho * Cd * A * abs(self.vspd) * self.vspd/12.96
+        Fa = 0.5 * rho * Cd * A * abs(self.vspd) * self.vspd / 12.96
         
         # Total force
         Fd = Fg + Fr + Fa
@@ -127,12 +124,8 @@ class AutoTransmission:
         # Final acceleration on the car
         dv = (F - Fd)/m
         
-        self.vspd += dv*self.tdelta
+        self.vspd += dv * self.tdelta
         self.vspd = np.clip(self.vspd, 0, None)
-
-        # Type1 fault
-        if v_fault1 is not None:
-            self.vspd = v_fault1
         
         # Noise
         if noise:
@@ -141,12 +134,12 @@ class AutoTransmission:
 
         # Engage gear
         if self.should_upshift():
-            if fault3 and self.gear == 2:
+            if fault2 and self.gear == 2:
                 self.gear = 4
-            elif not (fault2 and self.gear == 3):
+            elif not (fault1 and self.gear == 3):
                 self.gear += 1
         elif self.should_downshift():
-            if fault3 and self.gear == 4:
+            if fault2 and self.gear == 4:
                 self.gear = 2
             else:
                 self.gear -= 1
@@ -155,8 +148,7 @@ class AutoTransmission:
         log = f'vspd {self.vspd:5.1f}  espd {self.espd:6.1f}  gear {self.gear}'
         logging.debug(log)
 
-    def run(self, noise=False, fault1=False, fault2=False, fault3=False, 
-            plot=False, save=False):
+    def run(self, noise=False, fault1=False, fault2=False, plot=False, save=False):
         """Runs the simulation.
         
         Parameters
@@ -164,31 +156,21 @@ class AutoTransmission:
         noise : bool
             add Gaussian random noise to the sensors (vehicle speed, engine speed)
         fault1 : bool
-            readings of the vehicle speed sensor are substituted with a random 
-            value within [0, 160] at any time
-        fault2 : bool
             unable to engage the fourth gear
-        fault3 : bool
+        fault2 : bool
             gear switches directly from second to fourth and vise versa
         plot : bool
             indicating if we plot the engine and vehicle speed
         save : bool
             indicating if we save the plot
         """
-        if fault1:
-            t_fault1 = np.random.randint(self.slen)
-            v_fault1 = np.random.random()*160
-        
         for t in range(self.slen):
-            self.ts.append(t*self.tdelta)
+            self.ts.append(t * self.tdelta)
             self.gears.append(self.gear)
             self.vspds.append(self.vspd)
             self.espds.append(self.espd)
-            if fault1 and t >= t_fault1:
-                self.update(noise, v_fault1=v_fault1)
-            else:
-                self.update(noise, fault2, fault3)
-            if not t%int(1/self.tdelta):
+            self.update(noise, fault1, fault2)
+            if not t % int(1/self.tdelta):
                 self.log_update()
         if plot:
             fig, axs = plt.subplots(2)
@@ -218,7 +200,7 @@ class AutoTransmission:
 
         Parameters
         ----------
-        inputs : array of shape (250, 2)
+        inputs
             [[engine speed signal],
              [vehicle speed signal]]
         
@@ -227,8 +209,8 @@ class AutoTransmission:
         int
             the predicted fault type
         """
-        if inputs.size != 60:
-            raise ValueError(f'Expected input size 500, got {inputs.size//2}')
+        if inputs.shape != (2, self.slen):
+            raise ValueError(f'Expected input shape {2, self.slen}, got {inputs.shape}')
         
         new_inputs = inputs.reshape((1, inputs.size))
         return int(self.regr.predict(new_inputs)[0])

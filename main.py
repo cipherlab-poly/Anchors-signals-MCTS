@@ -4,6 +4,7 @@ np.random.seed(42)
 
 from mcts import MCTS
 from stl import STL, Generator
+#from visual import Visual
 
 import logging
 logging.basicConfig(level=logging.INFO, 
@@ -37,9 +38,7 @@ params = {
     'y': None,
     'black_box': None,
     'tau': 0.95,
-    'rho': 0.01,
-    'delta': 0.01,
-    'epsilon': 0.01
+    'rho': 0.01
 }
 
 def explain_thermostat(params):
@@ -99,17 +98,19 @@ def explain_fault_at(params):
     '''
     from models.auto_transmission.auto_transmission import AutoTransmission
 
-    duration = 15
-    tdelta = 0.5
-    slen = int(duration/tdelta)
+    slen = 15
+    tdelta = 1.0
     throttles = [0.5]*slen
     thetas = [0.]*slen
 
-    at = AutoTransmission(throttles, thetas, tdelta=tdelta)
+    at = AutoTransmission(throttles, thetas, tdelta)
+    if at.regr.coef_.size != slen * 2:
+        from models.auto_transmission.train import Train
+        Train(slen, tdelta).train()
     at.run(fault2=True)
-    
+
     params['s'] = np.array([at.espds, at.vspds])
-    params['srange'] = [(0, (0, 10000, 10)), (0, (0, 300, 10))]
+    params['srange'] = [(0, (0, 6000, 6)), (0, (0, 200, 8))]
     params['black_box'] = at.black_box
     params['y'] = at.black_box(params['s'])
 
@@ -117,9 +118,9 @@ def get_reward(sample):
     return int(params['black_box'](sample) == params['y'])
 
 def main():
-    explain_thermostat(params)
+    #explain_thermostat(params)
     #explain_acas_xu(params)
-    #explain_fault_at(params)
+    explain_fault_at(params)
     
     log = ''
     if params['s'] is None:
@@ -135,7 +136,8 @@ def main():
         return
 
     logging.info(f"{params['s']} => {params['y']}")
-    tree = MCTS(visual=False)
+    max_depth = 5
+    tree = MCTS(batch_size=256, max_depth=max_depth, delta=0.01, epsilon=0.01)
     stl = STL()
     generator = Generator(params['s'], params['srange'], params['rho'])
     logging.info('Initializing primitives...')
@@ -144,14 +146,15 @@ def main():
     while True:
         logging.info('Choosing best primitive...')
         tree.train(stl)
-        tree.visualize()
         stls = tree.choose(stl)
         for stl in stls:
-            q, n = tree.qMC[stl], tree.nMC[stl]
+            q, n = tree.Q[stl], tree.N[stl]
             logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')
         stl = stls[0]
-        if tree.qMC[stl]/tree.nMC[stl] > params['tau']:
-            return
+        if tree.Q[stl]/tree.N[stl] > params['tau'] or len(stl) >= max_depth:
+            break
+    #visual = Visual(tree)
+    #visual.visualize()
 
 if __name__ == '__main__':
     main()

@@ -182,7 +182,7 @@ class Generator:
             if self._srange[d][0] == 0:
                 smin, smax, _ = self._srange[d][1]
                 u = np.random.rand(sdim, slen) - 0.5
-                u *= 2*(smax - smin) / slen
+                u *= 2 * (smax - smin) / slen
                 sample[d] = self._s[d] + np.cumsum(u[d])
             
             # d-th component is discrete
@@ -192,7 +192,7 @@ class Generator:
                 for t in range(self._s.shape[1]):
                     i = choice.index(self._s[d, t])
                     if length > 1:
-                        distr = [0.5/(length-1)]*length
+                        distr = [0.5 / (length - 1)] * length
                         distr[i] = 0.5
                     else:
                         distr = [1]
