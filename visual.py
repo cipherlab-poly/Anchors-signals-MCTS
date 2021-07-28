@@ -39,7 +39,7 @@ class Visual:
         for node1 in auxG.nodes:
             for node2 in auxG.nodes:
                 diff = len(node2) - len(node1)
-                if diff == 1 and node1.is_parent_of(node2):
+                if diff == 1 and node2 in self.tree.children[node1]:
                     auxG.add_edge(node1, node2)
                 elif (node1, node2) in auxG.edges:
                     auxG.remove_edge(node1, node2)    

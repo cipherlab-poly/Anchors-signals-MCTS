@@ -1,30 +1,20 @@
-import matplotlib.pyplot as plt
 import numpy as np
+from stl import Simulator
 
-class Thermostat:
-    
+class Thermostat(Simulator):
     # outside_temp < expected_temp
-    def __init__(self, outside_temp, expected_temp, latency):
-        self.out_temp = outside_temp  # constant
-        self.in_temp  = outside_temp + np.random.random() # at the beginning
-        self.exp_temp = expected_temp # constant
-        self.on = 0                   # on: 1, off: 0
-        self.latency = latency        # on if in_temp below exp_temp for at least *latency*
-        self.temps = [self.in_temp]
-        self.ons = [0]
+    def __init__(self, out_temp, exp_temp, latency, length):
+        self.out_temp   = out_temp
+        self.in_temp    = out_temp + np.random.random()
+        self.exp_temp   = exp_temp
+        self.on         = 0
+        self.latency    = latency
+        self.temps      = [self.in_temp]
+        self.length     = length
+        self.ons        = [0]
         
-    # input = self.temps; output = self.on
-    # on if in_temp below exp_temp for at least *latency* (to be discovered)
-    def black_box(self, temps):
-        on = int(len(temps[0]) >= self.latency)
-        if on:
-            for temp in temps[0, -self.latency:]:
-                if temp >= self.exp_temp:
-                    on = 0
-        return on
-
-    def simulate(self, n):
-        for _ in range(n-1):
+    def run(self):
+        for _ in range(self.length - 1):
             if self.on and self.in_temp < self.exp_temp:
                 self.in_temp += np.random.random()
             if not self.on and self.in_temp > self.out_temp:
@@ -33,17 +23,31 @@ class Thermostat:
             self.temps.append(self.in_temp)
             
             # on if in_temp below exp_temp for at least *latency*
-            self.on = self.black_box(np.array([self.temps]))
+            self.on = self._black_box(np.array([self.temps]))
             self.ons.append(self.on)
+    
+    def _black_box(self, sample):
+        "on if `in_temp` below `exp_temp` for at least `latency`"
+        on = int(len(sample[0]) >= self.latency)
+        if on:
+            for temp in sample[0, -self.latency:]:
+                if temp >= self.exp_temp:
+                    on = 0
+        return on
+    
+    def set_expected_output(self, y):
+        super().set_expected_output(y)
+    
+    def simulate(self):
+        tm = Thermostat(self.out_temp, self.exp_temp, self.latency, self.length)
+        tm.run()
+        return np.array([tm.temps]), tm.on
 
-    def __str__(self):
-        if self.on:
-            status = 'ON'
-        else:
-            status = 'OFF'
-        return '%5.2f'%self.in_temp + ', ' + status
-
+    def reward(self, output):
+        return int(self.expected_output == output)
+        
     def plot(self, save=False):
+        import matplotlib.pyplot as plt
         t = range(len(self.temps))
         fig, ax1 = plt.subplots()
         ax1.set_xlabel('time')

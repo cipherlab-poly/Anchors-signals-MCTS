@@ -3,7 +3,7 @@ np.set_printoptions(precision=2, suppress=True)
 np.random.seed(42)
 
 from mcts import MCTS
-from stl import STL, Generator
+from stl import STL, PrimitiveGenerator, Simulator
 #from visual import Visual
 
 import logging
@@ -11,61 +11,23 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)-5s %(message)s',
                     datefmt='%H:%M:%S')
 
-"""
-Parameters
-----------
-s: np.ndarray
-    signal being explained
-srange: list of tuples
-    srange[d] = | (0, (min, max))               if continuous
-                | (1, list of the finite set)   if discrete
-stepsize: int
-    number of evenly spaced signal values for the continuous components
-y: int
-    black_box(s)
-black_box: callable (array -> float)
-    black box
-tau: float 
-    precision threshold
-rho: float
-    robustness degree (~coverage) threshold
-num_train: int
-    number of episodes to train MCTS (rollout)
-"""
-params = {
-    's': None,
-    'srange': [],
-    'y': None,
-    'black_box': None,
-    'tau': 0.95,
-    'rho': 0.01
-}
-
-def explain_thermostat(params):
-    '''
-    Thermostat
-    '''
+def simulate_thermostat(params) -> Simulator:
     from models.thermostat import Thermostat
 
-    slen = 5       # Signal length
-
-    tm = Thermostat(19, 20, 2)
-    #tm.simulate(slen)
+    slen = 5
+    tm = Thermostat(out_temp=19, exp_temp=20, latency=2, length=slen)
     tm.temps = [19.53, 19.33, 19.83, 20.08, 19.37]
     tm.on = 0
 
-    params['s'] = np.array([tm.temps])
-    params['srange'] = [(0, (19, 21, 20))]
-    params['black_box'] = tm.black_box
-    params['y'] = tm.on
+    params['s']     = np.array([tm.temps])
+    params['range'] = [(0, (19, 21, 20))]
+    params['y']     = tm.on
+    return tm
 
-def explain_acas_xu(params):
-    '''
-    ACAS-XU
+def simulate_acas_xu(params) -> Simulator:
+    "ACAS-XU: expect something like (s1 < 5000)(-1.5 < s2 < 0.5)(s3 < 0)(s7 = 3)]"
     
-    Expect something like [s1 < 5000 ^ -1.5 < s2 < 0.5 ^ s3 < 0 ^ s7 = 3]
-    '''
-    from models.acasxu.acasxu import ACAS_XU
+    from models.acasxu import ACASXU
 
     slen = 50       # Signal length
     memory = 5      # Length of the latest memory for explanations
@@ -87,62 +49,86 @@ def explain_acas_xu(params):
     srange.append((1, [tau]))
     srange.append((1, range(5)))
     
-    params['s'] = acas_xu.signals
-    params['srange'] = srange
-    params['black_box'] = acas_xu.black_box
-    params['y'] = acas_xu.a_actual
+    params['s']     = acas_xu.signals
+    params['range'] = srange
+    params['y']     = acas_xu.a_actual
+    return acas_xu
 
-def explain_fault_at(params):
-    '''
-    Automatic transmission fault classification
-    '''
-    from models.auto_transmission.auto_transmission import AutoTransmission
+def simulate_fault_at(params) -> Simulator:
+    "Automatic transmission fault detection"
+    from models.auto_transmission import AutoTransmission
 
-    slen = 15
-    tdelta = 1.0
+    slen = 30
+    tdelta = 0.5
     throttles = [0.5]*slen
     thetas = [0.]*slen
 
     at = AutoTransmission(throttles, thetas, tdelta)
-    if at.regr.coef_.size != slen * 2:
-        from models.auto_transmission.train import Train
+    if at.regr.coef_.shape[1] != slen * 2:
+        print(at.regr.coef_.shape)
+        from models.autotransmission.train import Train
         Train(slen, tdelta).train()
-    at.run(fault2=True)
-
-    params['s'] = np.array([at.espds, at.vspds])
-    params['srange'] = [(0, (0, 6000, 6)), (0, (0, 200, 8))]
-    params['black_box'] = at.black_box
-    params['y'] = at.black_box(params['s'])
-
-def get_reward(sample):
-    return int(params['black_box'](sample) == params['y'])
-
-def main():
-    #explain_thermostat(params)
-    #explain_acas_xu(params)
-    explain_fault_at(params)
+        at = AutoTransmission(throttles, thetas, tdelta)
+    params['s'], params['y'] = at.simulate(fault=1)
+    params['range'] = [(0, (0, 10000, 10)), (0, (0, 200, 10))]
+    params['batch_size'] = 16
+    return at
     
-    log = ''
-    if params['s'] is None:
-        log += 'signal s? '
-    if not len(params['srange']):
-        log += 'range? '
-    if params['black_box'] is None:
-        log += 'black box? '
-    if params['y'] is None:
-        params['y'] = black_box(s)
-    if len(log):
-        logging.error(log)
-        return
+"""
+Should be defined in params
+---------------------------
+s: np.ndarray
+    signal being explained
+range: list of tuples
+    srange[d] = | (0, (min, max, stepsize))     if continuous
+                | (1, list of the finite set)   if discrete
+y: int
+    output = black_box(s)
 
-    logging.info(f"{params['s']} => {params['y']}")
-    max_depth = 5
-    tree = MCTS(batch_size=256, max_depth=max_depth, delta=0.01, epsilon=0.01)
+Optional
+--------
+batch_size: int
+    number of samples drawn at each rollout
+tau: float 
+    precision threshold
+rho: float
+    robustness degree (~coverage) threshold
+max_depth: int
+    maximum depth to expand the tree
+delta: float
+    confidence threshold
+epsilon: float
+    maximum tolerated error 
+"""
+
+def main(params={}):
+    #simulator   = simulate_thermostat(params)
+    #simulator  = simulate_acas_xu(params)
+    simulator  = simulate_fault_at(params)
+
+    if not {'s', 'range', 'y'}.issubset(params.keys()):
+        logging.error('something undefined in params among {s, range, y}')
+        return
+    s           = params.get('s',           None)
+    srange      = params.get('range',       None)
+    y           = params.get('y',           None)
+    batch_size  = params.get('batch_size',  256 )
+    tau         = params.get('tau',         0.95)
+    rho         = params.get('rho',         0.01)
+    max_depth   = params.get('max_depth',   5   )
+    delta       = params.get('delta',       0.01)
+    epsilon     = params.get('epsilon',     0.01)
+    
+    simulator.set_expected_output(y)
+    logging.info(f'{s} => {y}')
+    tree = MCTS(batch_size=batch_size, max_depth=max_depth, 
+                delta=delta, epsilon=epsilon)
     stl = STL()
-    generator = Generator(params['s'], params['srange'], params['rho'])
+    primitives = PrimitiveGenerator(s, srange, rho).generate()
     logging.info('Initializing primitives...')
-    nb_primitives = stl.initialize(generator, get_reward)
-    logging.info(f'Done. {nb_primitives} primitives.')
+    nb = stl.init(primitives, simulator)
+    logging.info(f'Done. {nb} primitives.')
+    
     while True:
         logging.info('Choosing best primitive...')
         tree.train(stl)
@@ -151,10 +137,10 @@ def main():
             q, n = tree.Q[stl], tree.N[stl]
             logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')
         stl = stls[0]
-        if tree.Q[stl]/tree.N[stl] > params['tau'] or len(stl) >= max_depth:
+        if tree.Q[stl]/tree.N[stl] > tau or len(stl) >= max_depth:
             break
-    #visual = Visual(tree)
-    #visual.visualize()
+
+    #tree.visualize()
 
 if __name__ == '__main__':
     main()

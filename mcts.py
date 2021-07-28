@@ -33,7 +33,9 @@ class MCTS:
 
     def choose(self, node):
         "Choose the best successor of node. (Choose a move in the game)"
-        return heapq.nlargest(5, self.children[node], key=self.__score)
+        best = heapq.nlargest(5, self.children[node], key=self._score)
+        worst = heapq.nsmallest(5, self.children[node], key=self._score)
+        return best + worst
 
     def train(self, node):
         "Rollout the tree from `node` until error is smaller than `epsilon`"
@@ -60,11 +62,11 @@ class MCTS:
         if len(leaf) < self.max_depth:
             self._expand(leaf)
 
-    def __score(self, node):
+    def _score(self, node):
         "Empirical score of `node`"
         if not self.N[node]:
-            return float('-inf')
-        return self.Q[node] / self.N[node]
+            return (float('-inf'), 0)
+        return (self.Q[node] / self.N[node], self.N[node])
     
     def _select_path(self, node):
         "Find an unexplored descendent of `node`"
@@ -86,13 +88,12 @@ class MCTS:
         "Update the `children` dict with the children of `node`"
         self.children[node] = node.get_children()
         if self.ancestors is not None:
-            ancestors = self.ancestors[node] # for back-propagation
             for child in self.children[node]:
                 self.ancestors[child].add(node)
 
     def _simulate(self, node):
         "Return the reward for a random simulation of `node`"
-        return node.reward(self.batch_size)
+        return node.get_reward(self.batch_size)
     
     def _backpropagate(self, path, reward):
         "Send `reward` back up to the ancestors of `node`"
@@ -114,17 +115,21 @@ class MCTS:
         log_N_vertex = math.log(self.N[node])
 
         def uct(n):
-            if not self.N[n]:
+            mu, N = self._score(n)
+            if not N:
                 return float('-inf')
-            mu = self.__score(n)
-            sqrt = math.sqrt(ce * log_N_vertex / self.N[n])
-            return mu + sqrt
+            tmp = math.sqrt(ce * log_N_vertex / N)
+            return mu + tmp
 
         def ucb1tuned(n):
-            if not self.N[n]:
+            mu, N = self._score(n)
+            if not N:
                 return float('-inf')
-            mu = self.__score(n)
-            tmp = math.sqrt(ce * log_N_vertex / self.N[n])
+            tmp = math.sqrt(ce * log_N_vertex / N)
             return mu + tmp * math.sqrt(min(0.25, mu * (1 - mu) + tmp))
 
         return max(self.children[node], key=eval(self.method))
+
+    def visualize(self):
+        from visual import Visual
+        Visual(self).visualize()

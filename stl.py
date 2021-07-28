@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import numpy as np
 import itertools
-from typing import List, FrozenSet, Callable
+
 from dataclasses import dataclass
+from typing import List, FrozenSet
 
 @dataclass
 class Primitive:
@@ -86,8 +87,8 @@ class Primitive:
 
 
 @dataclass
-class Generator:
-    "The static generator of primitives and signals."
+class PrimitiveGenerator:
+    "(static) generator of primitives and signals"
     
     # (instance attributes)
     _s: np.ndarray  # signal being explained
@@ -96,7 +97,7 @@ class Generator:
                     #             | (1, list of the finite set)   if discrete
     _rho: float     # robustness degree (~coverage) threshold
         
-    def generate_primitives(self) -> List[Primitive]:
+    def generate(self) -> List[Primitive]:
         "Generate STL primitives whose robustness is greater than `rho`"
             
         result = []
@@ -172,55 +173,19 @@ class Generator:
                 raise ValueError(f'{d}-th component continuous or discrete?')
         return result
 
-    def _sample_signal(self) -> np.ndarray:
-        "Simulate a signal by adding some artificially generated noise"
-        
-        sample = np.zeros(self._s.shape)
-        sdim, slen = self._s.shape
-        for d in range(sdim):
-            # d-th component is continuous
-            if self._srange[d][0] == 0:
-                smin, smax, _ = self._srange[d][1]
-                u = np.random.rand(sdim, slen) - 0.5
-                u *= 2 * (smax - smin) / slen
-                sample[d] = self._s[d] + np.cumsum(u[d])
-            
-            # d-th component is discrete
-            elif self._srange[d][0] == 1:
-                choice = self._srange[d][1]
-                length = len(choice)
-                for t in range(self._s.shape[1]):
-                    i = choice.index(self._s[d, t])
-                    if length > 1:
-                        distr = [0.5 / (length - 1)] * length
-                        distr[i] = 0.5
-                    else:
-                        distr = [1]
-                    sample[d, t] = np.random.choice(choice, p=distr)
-            else:
-                raise ValueError(f'{d}-th component continuous or discrete?')
-        return sample
-
-    def sample_signal_with_condition(self, condition: STL) -> np.ndarray:
-        "Sample until the STL `condition` is satisfied"
-
-        sample = self._sample_signal()
-        while not condition.satisfy(sample):
-            sample = self._sample_signal()
-        return sample
 
 class STL(object):
     __cache = {}
 
-    # (class attributes) to be set during initialization
-    __generator             = None  # static generator of primitives and signals
-    __get_reward            = None  # callable evaluating a signal sample (0 or 1)
-    __primitives            = []    # generated primitives will be stored here
-    __parents_primitives    = {}    # dict {child: parents} between primitives
+    # (class attributes) to be set during init
+    __primitives        = []    # list of generated primitives
+    __parents           = {}    # dict {child: parents} among primitives
+    __simulator         = None
+    __expected_output   = None
 
-    def __new__(cls, indices: FrozenSet[int]=frozenset(), action: int=None):
+    def __new__(cls, indices: FrozenSet[int]=frozenset()):
         for child in indices.copy():
-            indices -= STL.__parents_primitives[child]
+            indices -= STL.__parents[child]
         
         if indices in STL.__cache:
             return STL.__cache[indices]
@@ -229,54 +194,40 @@ class STL(object):
             STL.__cache[indices] = o
             return o
     
-    def __init__(self, indices: FrozenSet[int]=frozenset(), action: int=None):
+    def __init__(self, indices: FrozenSet[int]=frozenset()):
         self._indices = indices
-        self._action = action
         for child in indices:
-            self._indices -= STL.__parents_primitives[child]
+            self._indices -= STL.__parents[child]
     
-    def initialize(self, generator: Generator, get_reward: Callable):
-        STL.__generator = generator
-        STL.__primitives = generator.generate_primitives()
-        STL.__get_reward = get_reward
-        length = len(STL.__primitives)
-        STL.__parents_primitives = {child: {parent for parent in range(length)
+    def init(self, primitives: List[Primitive], simulator: Simulator) -> int:
+        STL.__primitives = primitives
+        STL.__simulator  = simulator
+        nb = len(primitives)
+        STL.__parents = {child: {parent for parent in range(nb)
             if STL.__primitives[child].is_child_of(STL.__primitives[parent])} 
-            for child in range(length)}
-        return length
+            for child in range(nb)}
+        return nb
 
-    def satisfy(self, s: np.ndarray) -> bool:
+    def _satisfy(self, s: np.ndarray) -> bool:
         "Verify if STL is satisfied by signal `s`"
         return all(STL.__primitives[i].satisfy(s) for i in self._indices)
     
     def get_children(self) -> Set[STL]:
         length = len(STL.__primitives)
-        if self._action is None: 
-            return {STL(frozenset({i}), i) for i in range(length)}
+        parents = set()
+        for i in self._indices:
+            parents.update(STL.__parents[i])
+        return {STL(self._indices.union([i])) 
+            for i in set(range(length)) - parents} - {self}
 
-        parents_primitives = STL.__parents_primitives[self._action]
-        return {self.apply_action(action)
-                for action in set(range(length)) - parents_primitives} - {self}
-
-    def get_parents(self) -> Set[STL]:
-        parents = [STL.__parents_primitives[i].union({i}) for i in self._indices]
-        return {STL(forzenset(r)) for r in itertools.product(*parents)} - {self}
-
-    def reward(self, batch_size: int) -> int:
-        r = 0
+    def get_reward(self, batch_size: int) -> int:
+        reward = 0
         for _ in range(batch_size):
-            sample = STL.__generator.sample_signal_with_condition(self)
-            r += STL.__get_reward(sample)
-        return r
-
-    def apply_action(self, action: int) -> STL:
-        return STL(self._indices.union([action]), action)
-
-    def get_action(self) -> int:
-        return self._action
-
-    def is_parent_of(self, child) -> bool:
-        return self._indices.issubset(child._indices)
+            sample, output = STL.__simulator.simulate()
+            while not self._satisfy(sample):
+                sample, output = STL.__simulator.simulate()
+            reward += STL.__simulator.reward(output)
+        return reward
 
     def __len__(self):
         return len(self._indices)
@@ -288,3 +239,21 @@ class STL(object):
         if not len(self._indices):
             return 'T'
         return '^'.join(repr(STL.__primitives[i]) for i in self._indices)
+
+
+from abc import ABC, abstractmethod
+
+class Simulator(ABC):
+    @abstractmethod
+    def set_expected_output(self, y):
+        self.expected_output = y
+    
+    @abstractmethod
+    def simulate(self):
+        "Return a simulated signal and its reward"
+        return (np.zeros(0), 0)
+
+    @abstractmethod
+    def reward(self, output):
+        "Returns 0 or 1 by comparing `output` to the expected output"
+        return 1

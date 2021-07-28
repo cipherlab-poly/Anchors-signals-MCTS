@@ -1,10 +1,9 @@
-import logging
-import matplotlib.pyplot as plt
 import numpy as np
 from joblib import load
-from os.path import *
+import os.path
+from stl import Simulator
 
-class AutoTransmission:
+class AutoTransmission(Simulator):
     def __init__(self, throttles, thetas, tdelta, params={}):
         """
         Parameters
@@ -24,21 +23,21 @@ class AutoTransmission:
             raise ValueError('every theta should be within [0, pi/2]')
         
         self.slen = len(throttles)
-        self.throttles = iter(throttles)    # Throttle: [0, 1]
-        self.thetas = iter(thetas)          # Road slope (rad): [0, pi/2]
-        self.vspd = 0                       # Vehicle speed (km/h)
-        self.espd = 1000                    # Engine speed (rpm)
-        self.gear = 0                       # Gear: 0, 1, 2, 3, 4
-        
-        self.tdelta = tdelta
+        self.throttles = throttles  # Throttle: [0, 1]
+        self.thetas = thetas        # Road slope (rad): [0, pi/2]
+        self.tdelta = tdelta        # Time step
+        self.vspd = 0               # Vehicle speed (km/h)
+        self.espd = 1000            # Engine speed (rpm)
+        self.gear = 0               # Gear: 0, 1, 2, 3, 4
         self.params = params
-
+        self.t = -1
         self.ts = []
         self.espds = []
         self.vspds = []
         self.gears = []
 
-        filename = dirname(abspath(__file__)) + '/auto_transmission.joblib'
+        filename = os.path.dirname(os.path.abspath(__file__)) 
+        filename += '/autotransmission/autotransmission.joblib'
         self.regr = load(filename)
 
     def should_upshift(self):
@@ -67,7 +66,7 @@ class AutoTransmission:
         case1 = self.gear == 1 and self.vspd < 0
         return case1 or case2 or case3 or case4
 
-    def update(self, noise=True, fault1=False, fault2=False):
+    def update(self, noise=True, fault=0):
         """Updates the state machine. Modified from:
             https://python-control.readthedocs.io/en/0.8.3/cruise-control.html
 
@@ -75,10 +74,10 @@ class AutoTransmission:
         ----------
         noise : bool
             add Gaussian random noise to the sensors (vehicle speed, engine speed)
-        fault1 : bool
-            unable to engage the fourth gear
-        fault2 : bool
-            gear switches directly from second to fourth and vise versa
+        fault : int
+            | 0 if no fault
+            | 1 if unable to engage the fourth gear
+            | 2 if gear switches directly from second to fourth and vise versa
         """
         m = self.params.get('m', 1600.)
         g = self.params.get('g', 9.8)
@@ -92,30 +91,28 @@ class AutoTransmission:
         omega_m = self.params.get('omega_m', 420.)  # peak engine angular speed
         beta = self.params.get('beta', 0.4)         # peak engine rolloff
 
-        throttle = next(self.throttles)
+        self.t += 1
+        throttle = self.throttles[self.t]
         ratio = alpha[max(self.gear - 1, 0)]
         omega = ratio * self.vspd / 3.6
         torque = np.clip(Tm * (1 - beta * (omega / omega_m - 1)**2), 0, None)
         F = ratio * torque * throttle
         self.espd = np.clip(omega * 9.55, 500, None)
 
-        '''
-        gravity according to the road slope
-        '''
-        Fg = m * g * np.sin(next(self.thetas))
+        
+        # Gravity due to the road slope.
+        Fg = m * g * np.sin(self.thetas[self.t])
 
-        '''
-        Rolling friction
-            Cr:  coefficient of rolling friction
-        '''
+        
+        # Rolling friction:
+        #   Cr:  coefficient of rolling friction
         Fr  = m * g * Cr * np.copysign(1, self.vspd)
 
-        '''
-        The aerodynamic drag:
-            rho: density of air
-            Cd:  shape-dependent aerodynamic drag coefficient
-            A:   the frontal area of the car
-        '''
+        
+        # Aerodynamic drag:
+        #   rho: density of air
+        #   Cd:  shape-dependent aerodynamic drag coefficient
+        #   A:   the frontal area of the car
         Fa = 0.5 * rho * Cd * A * abs(self.vspd) * self.vspd / 12.96
         
         # Total force
@@ -134,83 +131,81 @@ class AutoTransmission:
 
         # Engage gear
         if self.should_upshift():
-            if fault2 and self.gear == 2:
+            if fault == 2 and self.gear == 2:
                 self.gear = 4
-            elif not (fault1 and self.gear == 3):
+            elif not (fault == 1 and self.gear == 3):
                 self.gear += 1
         elif self.should_downshift():
-            if fault2 and self.gear == 4:
+            if fault == 2 and self.gear == 4:
                 self.gear = 2
             else:
                 self.gear -= 1
 
-    def log_update(self):
-        log = f'vspd {self.vspd:5.1f}  espd {self.espd:6.1f}  gear {self.gear}'
-        logging.debug(log)
-
-    def run(self, noise=False, fault1=False, fault2=False, plot=False, save=False):
+    def run(self, noise=True, fault=0):
         """Runs the simulation.
         
         Parameters
         ----------
         noise : bool
             add Gaussian random noise to the sensors (vehicle speed, engine speed)
-        fault1 : bool
-            unable to engage the fourth gear
-        fault2 : bool
-            gear switches directly from second to fourth and vise versa
-        plot : bool
-            indicating if we plot the engine and vehicle speed
-        save : bool
-            indicating if we save the plot
+        fault : int
+            | 0 if no fault
+            | 1 if unable to engage the fourth gear
+            | 2 if gear switches directly from second to fourth and vise versa
         """
         for t in range(self.slen):
             self.ts.append(t * self.tdelta)
             self.gears.append(self.gear)
             self.vspds.append(self.vspd)
             self.espds.append(self.espd)
-            self.update(noise, fault1, fault2)
-            if not t % int(1/self.tdelta):
-                self.log_update()
-        if plot:
-            fig, axs = plt.subplots(2)
+            self.update(noise, fault)
+    
+    def set_expected_output(self, y):
+        super().set_expected_output(y)
+    
+    def simulate(self, fault=None):
+        if fault is None:
+            fault = np.random.randint(2)
+            if fault:
+                fault += np.random.randint(2)
+        at = AutoTransmission(self.throttles, self.thetas, self.tdelta)
+        if fault not in range(3):
+            raise ValueError('wrong fault type')
+        
+        at.run(fault=fault)
+        sample = np.array([at.espds, at.vspds])
+        return sample, int(self.regr.predict(sample.reshape((1, -1)))[0])
 
-            axs[0].plot(self.ts, self.espds, color='b')
-            axs[0].set_xlabel('time (s)')
-            axs[0].set_ylabel('engine speed (rpm)', color='b')
-            axs[1].plot(self.ts, self.vspds, color='b')
-            axs[1].set_xlabel('time (s)')
-            axs[1].set_ylabel('vehicle speed (km/h)', color='b')
-            ax2 = axs[0].twinx()  # a second axe that shares the same x-axis
-            ax2.set_ylabel('gear', color='r')
-            ax2.step(self.ts, self.gears, 'r-', where='post')
-            plt.yticks(range(5))
-            ax3 = axs[1].twinx()  # a second axe that shares the same x-axis
-            ax3.set_ylabel('gear', color='r')
-            ax3.step(self.ts, self.gears, 'r-', where='post')
-            plt.yticks(range(5))
-            for ax in axs.flat:
-                ax.label_outer()
-            if save:
-                plt.savefig('demo/auto_transmission.png')
-            plt.show()
+    def reward(self, output):
+        return int(self.expected_output == output)
 
-    def black_box(self, inputs):
-        """Predicts the fault type according to engine and vehicle speed signals.
-
+    def plot(self, save=False):
+        """Plots the engine and vehicle speed.
+        
         Parameters
         ----------
-        inputs
-            [[engine speed signal],
-             [vehicle speed signal]]
-        
-        Returns
-        -------
-        int
-            the predicted fault type
+        save : bool
+            indicating if we save the plot
         """
-        if inputs.shape != (2, self.slen):
-            raise ValueError(f'Expected input shape {2, self.slen}, got {inputs.shape}')
-        
-        new_inputs = inputs.reshape((1, inputs.size))
-        return int(self.regr.predict(new_inputs)[0])
+        import matplotlib.pyplot as plt
+        fig, axs = plt.subplots(2)
+
+        axs[0].plot(self.ts, self.espds, color='b')
+        axs[0].set_xlabel('time (s)')
+        axs[0].set_ylabel('engine speed (rpm)', color='b')
+        axs[1].plot(self.ts, self.vspds, color='b')
+        axs[1].set_xlabel('time (s)')
+        axs[1].set_ylabel('vehicle speed (km/h)', color='b')
+        ax2 = axs[0].twinx()  # a second axe that shares the same x-axis
+        ax2.set_ylabel('gear', color='r')
+        ax2.step(self.ts, self.gears, 'r-', where='post')
+        plt.yticks(range(5))
+        ax3 = axs[1].twinx()  # a second axe that shares the same x-axis
+        ax3.set_ylabel('gear', color='r')
+        ax3.step(self.ts, self.gears, 'r-', where='post')
+        plt.yticks(range(5))
+        for ax in axs.flat:
+            ax.label_outer()
+        if save:
+            plt.savefig('demo/auto_transmission.png')
+        plt.show()

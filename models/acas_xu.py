@@ -7,7 +7,7 @@ import logging
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
-class ACAS_XU:
+class ACASXU:
     """
     Parameters
     ----------
@@ -62,8 +62,8 @@ class ACAS_XU:
 
         self.nnets = {}
         for a_prev in range(5):
-            filename = dirname(abspath(__file__)) + '/ACASXU_experimental_v2a_'
-            filename += f'{a_prev+1}_{self.index_tau}.nnet'
+            filename = dirname(abspath(__file__)) + 'acasxu/ACASXU'
+            filename += f'_experimental_v2a_{a_prev+1}_{self.index_tau}.nnet'
             self.nnets[a_prev] = NNet(filename)
         
         self.plot = plot
