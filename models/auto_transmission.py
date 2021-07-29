@@ -66,18 +66,22 @@ class AutoTransmission(Simulator):
         case1 = self.gear == 1 and self.vspd < 0
         return case1 or case2 or case3 or case4
 
-    def update(self, noise=True, fault=0):
+    def update(self, noise=True, fault=0, v_fault1=None):
         """Updates the state machine. Modified from:
             https://python-control.readthedocs.io/en/0.8.3/cruise-control.html
 
         Parameters
         ----------
-        noise : bool
+        noise: bool
             add Gaussian random noise to the sensors (vehicle speed, engine speed)
-        fault : int
+        fault: int
             | 0 if no fault
-            | 1 if unable to engage the fourth gear
-            | 2 if gear switches directly from second to fourth and vise versa
+            | 1 if readings of the speed sensor broken and replaced with
+            |      `v_fault1` (a random value within [0, 160]) from a certain time
+            | 2 if unable to engage the fourth gear
+            | 3 if gear switches directly from second to fourth and vise versa
+        v_fault1: float
+            speed to be replaced with
         """
         m = self.params.get('m', 1600.)
         g = self.params.get('g', 9.8)
@@ -99,16 +103,13 @@ class AutoTransmission(Simulator):
         F = ratio * torque * throttle
         self.espd = np.clip(omega * 9.55, 500, None)
 
-        
         # Gravity due to the road slope.
         Fg = m * g * np.sin(self.thetas[self.t])
 
-        
         # Rolling friction:
         #   Cr:  coefficient of rolling friction
         Fr  = m * g * Cr * np.copysign(1, self.vspd)
 
-        
         # Aerodynamic drag:
         #   rho: density of air
         #   Cd:  shape-dependent aerodynamic drag coefficient
@@ -123,6 +124,10 @@ class AutoTransmission(Simulator):
         
         self.vspd += dv * self.tdelta
         self.vspd = np.clip(self.vspd, 0, None)
+
+        if fault == 1:
+            assert(v_fault1 is not None)
+            self.vspd = v_fault1
         
         # Noise
         if noise:
@@ -131,12 +136,12 @@ class AutoTransmission(Simulator):
 
         # Engage gear
         if self.should_upshift():
-            if fault == 2 and self.gear == 2:
+            if fault == 3 and self.gear == 2:
                 self.gear = 4
-            elif not (fault == 1 and self.gear == 3):
+            elif not (fault == 2 and self.gear == 3):
                 self.gear += 1
         elif self.should_downshift():
-            if fault == 2 and self.gear == 4:
+            if fault == 3 and self.gear == 4:
                 self.gear = 2
             else:
                 self.gear -= 1
@@ -150,15 +155,26 @@ class AutoTransmission(Simulator):
             add Gaussian random noise to the sensors (vehicle speed, engine speed)
         fault : int
             | 0 if no fault
-            | 1 if unable to engage the fourth gear
-            | 2 if gear switches directly from second to fourth and vise versa
+            | 1 if readings of the speed sensor is broken from a certain time
+            | 2 if unable to engage the fourth gear
+            | 3 if gear switches directly from second to fourth and vise versa
         """
+        if fault == 1:
+            t_fault1 = np.random.randint(self.slen//4, 3*self.slen//4)
+            v_fault1 = np.random.random()*100
+
         for t in range(self.slen):
             self.ts.append(t * self.tdelta)
             self.gears.append(self.gear)
             self.vspds.append(self.vspd)
             self.espds.append(self.espd)
-            self.update(noise, fault)
+            if fault == 1:
+                if t >= t_fault1:
+                    self.update(noise, fault=1, v_fault1=v_fault1)
+                else:
+                    self.update(noise)
+            else:
+                self.update(noise, fault)
     
     def set_expected_output(self, y):
         super().set_expected_output(y)
@@ -167,9 +183,9 @@ class AutoTransmission(Simulator):
         if fault is None:
             fault = np.random.randint(2)
             if fault:
-                fault += np.random.randint(2)
+                fault += np.random.randint(3)
         at = AutoTransmission(self.throttles, self.thetas, self.tdelta)
-        if fault not in range(3):
+        if fault not in range(4):
             raise ValueError('wrong fault type')
         
         at.run(fault=fault)
@@ -179,7 +195,7 @@ class AutoTransmission(Simulator):
     def reward(self, output):
         return int(self.expected_output == output)
 
-    def plot(self, save=False):
+    def plot(self):
         """Plots the engine and vehicle speed.
         
         Parameters
@@ -187,9 +203,7 @@ class AutoTransmission(Simulator):
         save : bool
             indicating if we save the plot
         """
-        import matplotlib.pyplot as plt
         fig, axs = plt.subplots(2)
-
         axs[0].plot(self.ts, self.espds, color='b')
         axs[0].set_xlabel('time (s)')
         axs[0].set_ylabel('engine speed (rpm)', color='b')
@@ -206,6 +220,19 @@ class AutoTransmission(Simulator):
         plt.yticks(range(5))
         for ax in axs.flat:
             ax.label_outer()
-        if save:
-            plt.savefig('demo/auto_transmission.png')
-        plt.show()
+
+# To execute from root: python3 -m models.auto_transmission
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+    slen = 15
+    tdelta = 1.0
+    throttles = [0.5]*slen
+    thetas = [0.]*slen
+    #for fault in range(3):
+    fault = 1
+    at = AutoTransmission(throttles, thetas, tdelta)
+    at.run(fault=fault)
+    at.plot()
+    plt.show()
+    #plt.savefig(f'demo/at_fault{fault}.png')
+    

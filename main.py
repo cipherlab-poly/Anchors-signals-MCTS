@@ -58,19 +58,20 @@ def simulate_fault_at(params) -> Simulator:
     "Automatic transmission fault detection"
     from models.auto_transmission import AutoTransmission
 
-    slen = 30
-    tdelta = 0.5
+    slen = 15
+    tdelta = 1.0
     throttles = [0.5]*slen
     thetas = [0.]*slen
 
     at = AutoTransmission(throttles, thetas, tdelta)
-    if at.regr.coef_.shape[1] != slen * 2:
-        print(at.regr.coef_.shape)
+    if True:#at.regr.coef_.shape[1] != slen * 2:
         from models.autotransmission.train import Train
-        Train(slen, tdelta).train()
+        logging.info('Training Logistic Regression for fault identification...')
+        Train(throttles, thetas, tdelta).train()
+        logging.info('Done.')
         at = AutoTransmission(throttles, thetas, tdelta)
-    params['s'], params['y'] = at.simulate(fault=1)
-    params['range'] = [(0, (0, 10000, 10)), (0, (0, 200, 10))]
+    params['s'], params['y'] = at.simulate(fault=2)
+    params['range'] = [(0, (0, 6000, 6)), (0, (0, 160, 8))]
     params['batch_size'] = 16
     return at
     
@@ -102,9 +103,9 @@ epsilon: float
 """
 
 def main(params={}):
-    #simulator   = simulate_thermostat(params)
+    #simulator  = simulate_thermostat(params)
     #simulator  = simulate_acas_xu(params)
-    simulator  = simulate_fault_at(params)
+    simulator   = simulate_fault_at(params)
 
     if not {'s', 'range', 'y'}.issubset(params.keys()):
         logging.error('something undefined in params among {s, range, y}')
@@ -120,7 +121,7 @@ def main(params={}):
     epsilon     = params.get('epsilon',     0.01)
     
     simulator.set_expected_output(y)
-    logging.info(f'{s} => {y}')
+    logging.info(f'Signal and output to explain:\n{s} => {y}')
     tree = MCTS(batch_size=batch_size, max_depth=max_depth, 
                 delta=delta, epsilon=epsilon)
     stl = STL()
