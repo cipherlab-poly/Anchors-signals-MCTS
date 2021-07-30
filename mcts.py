@@ -47,10 +47,11 @@ class MCTS:
             self._rollout(node)
             
             # Hoeffding's bound
-            best = self._select(node)
-            if self.N[best]:
-                div = math.sqrt(-math.log(self.delta/2) / (2*self.N[best]))
-                err = min(div, 1.0)
+            if self.children[node]:
+                best = self._select(node)
+                if self.N[best]:
+                    div = math.sqrt(-math.log(self.delta/2) / (2*self.N[best]))
+                    err = min(div, err)
         print()
 
     def _rollout(self, node):
@@ -59,8 +60,6 @@ class MCTS:
         leaf = path[-1]
         reward = self._simulate(leaf)
         self._backpropagate(path, reward)
-        if len(leaf) < self.max_depth:
-            self._expand(leaf)
 
     def _score(self, node):
         "Empirical score of `node`"
@@ -69,20 +68,18 @@ class MCTS:
         return (self.Q[node] / self.N[node], self.N[node])
     
     def _select_path(self, node):
-        "Find an unexplored descendent of `node`"
+        "Find a path leading to an unexplored descendent of `node`"
         path = []
         while True:
-            if node not in self.children or not self.children[node]:
-                # node is either unexplored or terminal
-                path.append(node)
-                return path
-            unexplored = self.children[node] - self.children.keys()
-            if unexplored:
-                n = unexplored.pop()
-                path.append(n)
-                return path
-            node = self._select(node)
             path.append(node)
+            if len(node) >= self.max_depth:
+                return path
+            if not self.children[node]: # not yet expanded
+                if self.N[node]:        # already explored
+                    self._expand(node)
+                else:
+                    return path
+            node = self._select(node)
 
     def _expand(self, node):
         "Update the `children` dict with the children of `node`"
@@ -117,14 +114,14 @@ class MCTS:
         def uct(n):
             mu, N = self._score(n)
             if not N:
-                return float('-inf')
+                return float('inf')
             tmp = math.sqrt(ce * log_N_vertex / N)
             return mu + tmp
 
         def ucb1tuned(n):
             mu, N = self._score(n)
             if not N:
-                return float('-inf')
+                return float('inf')
             tmp = math.sqrt(ce * log_N_vertex / N)
             return mu + tmp * math.sqrt(min(0.25, mu * (1 - mu) + tmp))
 

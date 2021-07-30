@@ -103,9 +103,9 @@ epsilon: float
 """
 
 def main(params={}):
-    #simulator  = simulate_thermostat(params)
-    #simulator  = simulate_acas_xu(params)
-    simulator   = simulate_fault_at(params)
+    simulator = simulate_thermostat(params)
+    #simulator = simulate_acas_xu(params)
+    #simulator = simulate_fault_at(params)
 
     if not {'s', 'range', 'y'}.issubset(params.keys()):
         logging.error('something undefined in params among {s, range, y}')
