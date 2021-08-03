@@ -4,7 +4,6 @@ np.random.seed(42)
 
 from mcts import MCTS
 from stl import STL, PrimitiveGenerator, Simulator
-#from visual import Visual
 
 import logging
 logging.basicConfig(level=logging.INFO, 
@@ -58,21 +57,16 @@ def simulate_fault_at(params) -> Simulator:
     "Automatic transmission fault detection"
     from models.auto_transmission import AutoTransmission
 
-    slen = 15
-    tdelta = 1.0
-    throttles = [0.5]*slen
-    thetas = [0.]*slen
-
+    tdelta = 0.5
+    throttles = [0.3]*24
+    thetas = [0.]*15 + [0.5]*9
     at = AutoTransmission(throttles, thetas, tdelta)
-    if True:#at.regr.coef_.shape[1] != slen * 2:
-        from models.autotransmission.train import Train
-        logging.info('Training Logistic Regression for fault identification...')
-        Train(throttles, thetas, tdelta).train()
-        logging.info('Done.')
-        at = AutoTransmission(throttles, thetas, tdelta)
-    params['s'], params['y'] = at.simulate(fault=2)
-    params['range'] = [(0, (0, 6000, 6)), (0, (0, 160, 8))]
+    at.run()
+    params['s'] = np.array([throttles, thetas])[:, -5:]
+    params['y'] = True
+    params['range'] = [(0, (0, 0.5, 5)), (0, (0, 0.7, 7))]
     params['batch_size'] = 16
+    params['epsilon'] = 0.02
     return at
     
 """
@@ -103,9 +97,9 @@ epsilon: float
 """
 
 def main(params={}):
-    simulator = simulate_thermostat(params)
+    #simulator = simulate_thermostat(params)
     #simulator = simulate_acas_xu(params)
-    #simulator = simulate_fault_at(params)
+    simulator = simulate_fault_at(params)
 
     if not {'s', 'range', 'y'}.issubset(params.keys()):
         logging.error('something undefined in params among {s, range, y}')
@@ -130,16 +124,22 @@ def main(params={}):
     nb = stl.init(primitives, simulator)
     logging.info(f'Done. {nb} primitives.')
     
-    while True:
+    stop = False
+    while not stop:
         logging.info('Choosing best primitive...')
-        tree.train(stl)
-        stls = tree.choose(stl)
-        for stl in stls:
-            q, n = tree.Q[stl], tree.N[stl]
-            logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')
-        stl = stls[0]
-        if tree.Q[stl]/tree.N[stl] > tau or len(stl) >= max_depth:
-            break
+        try:
+            tree.train(stl)
+        except KeyboardInterrupt:
+            logging.warning('Interrupted')
+            stop = True
+        finally:
+            stls = tree.choose(stl)
+            for stl in stls:
+                q, n = tree.Q[stl], tree.N[stl]
+                logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')
+            stl = stls[0]
+            if tree.Q[stl]/tree.N[stl] > tau or len(stl) >= max_depth:
+                break
 
     #tree.visualize()
 

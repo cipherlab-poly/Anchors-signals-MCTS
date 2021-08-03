@@ -18,9 +18,9 @@ class AutoTransmission(Simulator):
         if len(throttles) != len(thetas):
             raise ValueError('throttles and thetas should have same duration')
         if any(throttle < 0 or throttle > 1 for throttle in throttles):
-            raise ValueError('every throttle should be within [0, 1]')
-        if any(theta < 0 or theta > np.pi/2 for theta in thetas):
-            raise ValueError('every theta should be within [0, pi/2]')
+            raise ValueError(f'throttles should be within [0, 1], got {throttles}')
+        if any(theta < -np.pi/2 or theta > np.pi/2 for theta in thetas):
+            raise ValueError(f'thetas should be within [-pi/2, pi/2], got {thetas}')
         
         self.slen = len(throttles)
         self.throttles = throttles  # Throttle: [0, 1]
@@ -30,43 +30,62 @@ class AutoTransmission(Simulator):
         self.espd = 1000            # Engine speed (rpm)
         self.gear = 0               # Gear: 0, 1, 2, 3, 4
         self.params = params
-        self.t = -1
+        self.t = 0
         self.ts = []
         self.espds = []
         self.vspds = []
         self.gears = []
+        self.shifts = { 
+            '2-1': (0.5, 0.9, 5, 30), '1-2': (0.25, 0.9, 10, 40),
+            '3-2': (0.05, 0.9, 20, 50), '2-3': (0.35, 0.9, 30, 70),
+            '4-3': (0.05, 0.9, 35, 80), '3-4': (0.35, 0.9, 50, 100)
+        }
 
-        filename = os.path.dirname(os.path.abspath(__file__)) 
-        filename += '/autotransmission/autotransmission.joblib'
-        self.regr = load(filename)
+    def shift_gear(self):
+        """Inspired from:
+            https://www.mathworks.com/help/simulink/slref/modeling-an-automatic-transmission-controller.html
+        """
+        def speed(shift):
+            throttle = self.throttles[self.t]
+            x1, x2, y1, y2 = self.shifts[shift]
+            if throttle <= x1:
+                return y1 * 1.61
+            if throttle >= x2:
+                return y2 * 1.61
+            return (y1 + (y2 - y1)/(x2 - x1) * (throttle - x1)) * 1.61
 
-    def should_upshift(self):
-        """
-        Returns
-        -------
-        bool
-            indicating if the gear should be upshifted
-        """
-        case0 = self.gear == 0 and self.vspd > 0
-        case1 = self.gear == 1 and self.vspd > 30
-        case2 = self.gear == 2 and self.vspd > 65
-        case3 = self.gear == 3 and self.vspd > 100
-        return case0 or case1 or case2 or case3
+        def nearest_gear(x):
+            return abs(x - self.gear)
+        
+        shift = min(self.shifts, key=lambda shift: abs(speed(shift) - self.vspd))
+        if speed(shift) >= self.vspd:
+            if shift == '2-1':
+                self.gear = 1
+            elif shift == '1-2':
+                self.gear = min([1, 2], key=nearest_gear)
+            elif shift == '3-2':
+                self.gear = 2
+            elif shift == '2-3':
+                self.gear = min([2, 3], key=nearest_gear)
+            elif shift == '4-3':
+                self.gear = 3
+            elif shift == '3-4':
+                self.gear = min([3, 4], key=nearest_gear)
+        elif speed(shift) <= self.vspd:
+            if shift == '2-1':
+                self.gear = min([1, 2], key=nearest_gear)
+            elif shift == '1-2':
+                self.gear = 2
+            elif shift == '3-2':
+                self.gear = min([2, 3], key=nearest_gear)
+            elif shift == '2-3':
+                self.gear = 3
+            elif shift == '4-3':
+                self.gear = min([3, 4], key=nearest_gear)
+            elif shift == '3-4':
+                self.gear = 4
 
-    def should_downshift(self):
-        """
-        Returns
-        -------
-        bool
-            indicating if the gear should be downshifted
-        """
-        case4 = self.gear == 4 and self.vspd < 90
-        case3 = self.gear == 3 and self.vspd < 55
-        case2 = self.gear == 2 and self.vspd < 20
-        case1 = self.gear == 1 and self.vspd < 0
-        return case1 or case2 or case3 or case4
-
-    def update(self, noise=True, fault=0, v_fault1=None):
+    def update(self):
         """Updates the state machine. Modified from:
             https://python-control.readthedocs.io/en/0.8.3/cruise-control.html
 
@@ -74,14 +93,6 @@ class AutoTransmission(Simulator):
         ----------
         noise: bool
             add Gaussian random noise to the sensors (vehicle speed, engine speed)
-        fault: int
-            | 0 if no fault
-            | 1 if readings of the speed sensor broken and replaced with
-            |      `v_fault1` (a random value within [0, 160]) from a certain time
-            | 2 if unable to engage the fourth gear
-            | 3 if gear switches directly from second to fourth and vise versa
-        v_fault1: float
-            speed to be replaced with
         """
         m = self.params.get('m', 1600.)
         g = self.params.get('g', 9.8)
@@ -95,16 +106,16 @@ class AutoTransmission(Simulator):
         omega_m = self.params.get('omega_m', 420.)  # peak engine angular speed
         beta = self.params.get('beta', 0.4)         # peak engine rolloff
 
-        self.t += 1
         throttle = self.throttles[self.t]
+        theta = self.thetas[self.t]
         ratio = alpha[max(self.gear - 1, 0)]
         omega = ratio * self.vspd / 3.6
-        torque = np.clip(Tm * (1 - beta * (omega / omega_m - 1)**2), 0, None)
+        torque = max(Tm * (1 - beta * (omega / omega_m - 1)**2), 0)
         F = ratio * torque * throttle
-        self.espd = np.clip(omega * 9.55, 500, None)
+        self.espd = max(omega * 9.55, 500)
 
         # Gravity due to the road slope.
-        Fg = m * g * np.sin(self.thetas[self.t])
+        Fg = m * g * np.sin(theta)
 
         # Rolling friction:
         #   Cr:  coefficient of rolling friction
@@ -120,77 +131,39 @@ class AutoTransmission(Simulator):
         Fd = Fg + Fr + Fa
         
         # Final acceleration on the car
-        dv = (F - Fd)/m
+        dv = (F - Fd) / m
         
         self.vspd += dv * self.tdelta
-        self.vspd = np.clip(self.vspd, 0, None)
+        self.vspd = max(self.vspd, 0)
+        self.shift_gear()
+        self.t += 1
 
-        if fault == 1:
-            assert(v_fault1 is not None)
-            self.vspd = v_fault1
-        
-        # Noise
-        if noise:
-            self.vspd += np.random.normal(0, 0.5)
-            self.espd += np.random.normal(0, 15)
-
-        # Engage gear
-        if self.should_upshift():
-            if fault == 3 and self.gear == 2:
-                self.gear = 4
-            elif not (fault == 2 and self.gear == 3):
-                self.gear += 1
-        elif self.should_downshift():
-            if fault == 3 and self.gear == 4:
-                self.gear = 2
-            else:
-                self.gear -= 1
-
-    def run(self, noise=True, fault=0):
+    def run(self):
         """Runs the simulation.
         
         Parameters
         ----------
         noise : bool
             add Gaussian random noise to the sensors (vehicle speed, engine speed)
-        fault : int
-            | 0 if no fault
-            | 1 if readings of the speed sensor is broken from a certain time
-            | 2 if unable to engage the fourth gear
-            | 3 if gear switches directly from second to fourth and vise versa
         """
-        if fault == 1:
-            t_fault1 = np.random.randint(self.slen//4, 3*self.slen//4)
-            v_fault1 = np.random.random()*100
-
         for t in range(self.slen):
             self.ts.append(t * self.tdelta)
             self.gears.append(self.gear)
             self.vspds.append(self.vspd)
             self.espds.append(self.espd)
-            if fault == 1:
-                if t >= t_fault1:
-                    self.update(noise, fault=1, v_fault1=v_fault1)
-                else:
-                    self.update(noise)
-            else:
-                self.update(noise, fault)
+            self.update()
     
     def set_expected_output(self, y):
         super().set_expected_output(y)
     
-    def simulate(self, fault=None):
-        if fault is None:
-            fault = np.random.randint(2)
-            if fault:
-                fault += np.random.randint(3)
-        at = AutoTransmission(self.throttles, self.thetas, self.tdelta)
-        if fault not in range(4):
-            raise ValueError('wrong fault type')
-        
-        at.run(fault=fault)
-        sample = np.array([at.espds, at.vspds])
-        return sample, int(self.regr.predict(sample.reshape((1, -1)))[0])
+    def simulate(self):
+        throttles = self.throttles.copy()
+        thetas = self.thetas.copy()
+        throttles[:5:] = np.random.randint(0, 5, 5) * 0.1
+        thetas[-5:] = np.random.randint(0, 8, 5) * 0.1
+        at = AutoTransmission(self.throttles, thetas, self.tdelta)
+        at.run()
+        return np.array([throttles, thetas])[:, -5:], at.gears[-2] == 3 and at.gears[-1] == 2
 
     def reward(self, output):
         return int(self.expected_output == output)
@@ -224,15 +197,13 @@ class AutoTransmission(Simulator):
 # To execute from root: python3 -m models.auto_transmission
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-    slen = 15
-    tdelta = 1.0
-    throttles = [0.5]*slen
-    thetas = [0.]*slen
-    #for fault in range(3):
-    fault = 1
+    tdelta = 0.5
+    throttles = [0.3]*24
+    thetas = [0.]*15 + [0.5]*9
     at = AutoTransmission(throttles, thetas, tdelta)
-    at.run(fault=fault)
+    at.run()
+    print(at.gears)
     at.plot()
     plt.show()
-    #plt.savefig(f'demo/at_fault{fault}.png')
+    #plt.savefig(f'demo/auto_transmission1.png')
     
