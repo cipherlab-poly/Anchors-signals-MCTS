@@ -1,13 +1,14 @@
-from .nnet import NNet
+from .acasxu.nnet import NNet
 from os.path import *
 import numpy as np
 np.set_printoptions(precision=2, suppress=True)
 import logging
+from stl import Simulator
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
-class ACASXU:
+class ACAS_XU(Simulator):
     """
     Parameters
     ----------
@@ -27,57 +28,56 @@ class ACASXU:
     save : bool
         indicating if we save the animation as gif
     """
-    def __init__(self, inputs0, slen, fault_start=None, 
-            tdelta=0.1, noise=True, plot=False, save=False):
-        self.tau = inputs0[5]
-        self.a_prev = inputs0[6]
-        if self.a_prev not in range(5):
-            raise ValueError(f'a_prev should be in {range(5)}')
-        try:
-            taus = [0, 1, 5, 10, 20, 40, 60, 80, 100]
-            self.index_tau = taus.index(self.tau) + 1
-        except ValueError:
-            raise ValueError(f'tau should be in {taus}')
+    def __init__(self, inputs0, slen, tdelta, control='random', plot=False, save=False):
+        self.inputs0 = inputs0
+        self.slen = slen
+        self.tdelta = tdelta
+        
         rate = 1.5*np.pi/180
         self.heading_rate = {0: 0, 1: rate, 2: -rate, 3: 2*rate, 4: -2*rate}
-        self.tdelta = tdelta
-        rho0 = inputs0[0]
-        theta0 = inputs0[1]
-        psi0 = inputs0[2]
+        rho0, theta0, psi0 = inputs0[:3]
         self.norm_v_own = inputs0[3]
         self.norm_v_int = inputs0[4]
         self.x_int = np.array([0., -rho0/2])
         self.v_int = np.array([0., self.norm_v_int])
-        self.x_own = rho0*np.array([np.sin(theta0-psi0), np.cos(theta0-psi0)])
-        self.v_own = self.norm_v_own*np.array([np.sin(psi0), np.cos(psi0)])
-        self.a_actual = self.a_prev
-        self.signals = None
-        self.noise = noise
-        if fault_start is None:
-            self.fault_start = slen
-        else:
-            self.fault_start = fault_start
-        self.slen = slen
+        self.x_own = rho0 * np.array([np.sin(theta0-psi0), np.cos(theta0-psi0)])
+        self.v_own = self.norm_v_own * np.array([np.sin(psi0), np.cos(psi0)])
+        self.a_prev = 0
+        self.a_actual = 0
         self.clock = 0
 
-        self.nnets = {}
-        for a_prev in range(5):
-            filename = dirname(abspath(__file__)) + 'acasxu/ACASXU'
-            filename += f'_experimental_v2a_{a_prev+1}_{self.index_tau}.nnet'
-            self.nnets[a_prev] = NNet(filename)
+        self.min_dist = inputs0[0]
+        self.controls = np.zeros((1, slen))
+        
+        # control with acas-xu neural network
+        self.control = control
+        if control == 'acas-xu':
+            self.nnets = {}
+            for a_prev in range(5):
+                filename = dirname(abspath(__file__)) + '/acasxu/ACASXU'
+                filename += f'_experimental_v2a_{a_prev+1}_1.nnet'
+                self.nnets[a_prev] = NNet(filename)
+        
+        # control randomly
+        else:
+            self.a_next = {
+                0: [0, 1, 2, 3, 4],
+                1: [0, 1, 3],
+                2: [0, 2, 4],
+                3: [1, 3],
+                4: [2, 4]
+            }
         
         self.plot = plot
         self.save = save
         if plot:
             self.colors = {
                 0: 'green',
-                1: 'orange',
-                2: 'orange',
-                3: 'red',
-                4: 'red'
+                1: 'yellow', 2: 'yellow',
+                3: 'red',    4: 'red'
             }
             self.fig = plt.figure()
-            lim = rho0*2
+            lim = rho0 * 2
             self.ax = plt.axes(xlim=(-lim, lim), ylim=(-lim, lim)) 
             self.lines_own = [self.ax.plot([], [], lw=2, 
                 color=self.colors[self.a_actual])[0]]
@@ -89,40 +89,32 @@ class ACASXU:
             self.anim_stop = False
 
     def get_rho(self):
-        if self.clock >= self.fault_start:
-            return 10000
-        rho = np.sqrt(self.x_own[0]**2+self.x_own[1]**2)
-        if self.noise:
-            rho += np.random.normal(0, 5)
+        rho = np.sqrt(self.x_own[0]**2 + self.x_own[1]**2)
         return max(rho, 5)
 
     def get_theta(self):
-        rho = np.sqrt(self.x_own[0]**2+self.x_own[1]**2)
-        norm_v_own = np.sqrt(self.v_own[0]**2+self.v_own[1]**2)
+        rho = np.sqrt(self.x_own[0]**2 + self.x_own[1]**2)
+        norm_v_own = np.sqrt(self.v_own[0]**2 + self.v_own[1]**2)
         dot = np.dot(self.x_own, self.v_own)/(rho*norm_v_own)
         theta = np.arccos(-dot)
-        cross = self.x_own[0]*self.v_own[1] - self.x_own[1]*self.v_own[0]
+        cross = self.x_own[0] * self.v_own[1] - self.x_own[1] * self.v_own[0]
         if cross < 0:
             theta *= -1
-        if self.noise:
-            theta += np.random.normal(0, 0.05)
         return (theta + np.pi) % (np.pi*2) - np.pi
 
     def get_psi(self):
-        norm_v_own = np.sqrt(self.v_own[0]**2+self.v_own[1]**2)
-        norm_v_int = np.sqrt(self.v_int[0]**2+self.v_int[1]**2)
-        dot = np.dot(self.v_own, self.v_int)/(norm_v_own*norm_v_int)
+        norm_v_own = np.sqrt(self.v_own[0]**2 + self.v_own[1]**2)
+        norm_v_int = np.sqrt(self.v_int[0]**2 + self.v_int[1]**2)
+        dot = np.dot(self.v_own, self.v_int) / (norm_v_own*norm_v_int)
         psi = np.arccos(dot)
         cross = self.v_own[0]*self.v_int[1] - self.v_own[1]*self.v_int[0]
         if cross < 0:
             psi *= -1
-        if self.noise:
-            psi += np.random.normal(0, 0.05)
         return (psi + np.pi) % (np.pi*2) - np.pi
 
     def get_inputs(self):
         return np.array([self.get_rho(), self.get_theta(), self.get_psi(), 
-            self.norm_v_own, self.norm_v_int, self.tau, self.a_prev])
+            self.norm_v_own, self.norm_v_int])
 
     def log_state(self):
         log = f'{self.clock:3d} [{self.get_rho():7.2f} {self.get_theta():5.2f} '
@@ -130,30 +122,28 @@ class ACASXU:
         logging.info(log)
     
     def str_action(self, action):
-        actions = {
-            0: 'Clear of Conflict',
-            1: 'Weak Left turn',
-            2: 'Weak Right turn',
-            3: 'Strong Left turn',
-            4: 'Strong Right turn'
-        }
-        return actions[action]
+        return {0: 'Clear of Conflict',
+                1: 'Weak Left turn',   2: 'Weak Right turn',
+                3: 'Strong Left turn', 4: 'Strong Right turn'}[action]
 
     def evaluate(self):
         self.a_prev = self.a_actual
-        nnet = self.nnets[self.a_actual]
-        outputs = nnet.evaluate_network(self.get_inputs()[:5])
-        self.a_actual = np.argmin(outputs)
+        if self.control == 'acas-xu':
+            nnet = self.nnets[self.a_actual]
+            outputs = nnet.evaluate_network(self.get_inputs())
+            self.a_actual = np.argmin(outputs)
+        else:
+            self.a_actual = np.random.choice(self.a_next[self.a_actual])
     
     def update(self):
         self.evaluate()
         rate = self.heading_rate[self.a_actual]
-        cos = np.cos(rate*self.tdelta)
-        sin = np.sin(rate*self.tdelta)
+        cos = np.cos(rate * self.tdelta)
+        sin = np.sin(rate * self.tdelta)
         rot_matrix = np.array([[cos, -sin], [sin, cos]])
-        self.v_own = np.matmul(rot_matrix, self.v_own)
+        self.v_own = rot_matrix @ self.v_own
         self.x_own += (self.v_own - self.v_int) * self.tdelta
-        self.x_int += self.v_int*self.tdelta
+        self.x_int += self.v_int * self.tdelta
         self.clock += 1
 
     def _draw_init(self):
@@ -165,14 +155,17 @@ class ACASXU:
         if self.clock >= self.slen:
             self.anim.event_source.stop()
             self.anim_stop = True
+        
+        xs_own = self.x_int[0] + self.x_own[0]
+        ys_own = self.x_int[1] + self.x_own[1]
         self.update()
-        self.log_state()
         
         if self.a_actual != self.a_prev:
-            self.xs_own.append([])
-            self.ys_own.append([])
+            self.xs_own.append([xs_own])
+            self.ys_own.append([ys_own])
             new_line, = self.ax.plot([], [], lw=2, color=self.colors[self.a_actual])
             self.lines_own.append(new_line)
+        
         self.xs_own[-1].append(self.x_int[0] + self.x_own[0])
         self.ys_own[-1].append(self.x_int[1] + self.x_own[1])
         self.xs_int.append(self.x_int[0])
@@ -189,20 +182,8 @@ class ACASXU:
             self.anim.event_source.stop()
             self.anim_stop = True
 
-    def run(self):
-        """Runs the simulation.
-        
-        Parameters
-        ----------
-        slen : int
-            duration (signal length)
-
-        Returns
-        -------
-        int
-            a_prev just before memory
-        """
-        self.log_state()
+    def run(self, log=False):
+        "Runs the simulation."
         if self.plot:
             self.fig.canvas.mpl_connect('button_press_event', self._on_click)
             self.anim = animation.FuncAnimation(self.fig, self._animate, 
@@ -210,32 +191,28 @@ class ACASXU:
             if self.save:
                 writer = animation.PillowWriter(fps=24)
                 filename = dirname(dirname(dirname(abspath(__file__))))
-                filename += '/pics/ACAS-XU2.gif'
+                filename += '/pics/ACAS-XU.gif'
                 self.anim.save(filename, writer=animation.PillowWriter(fps=75))
             plt.show()
         else:
-            self.signals = np.zeros((7, 2*(self.slen-self.fault_start)))
-            while self.clock < self.slen:
+            for t in range(self.slen):
                 self.update()
-                self.log_state()
-                if self.clock > 2*self.fault_start-self.slen:
-                    self.signals[:, self.clock-2*self.fault_start+self.slen-1] = self.get_inputs()
-        
-    def black_box(self, inputs):
-        """Complete a forward pass (only based on the last timestamp).
+                if log:
+                    self.log_state()
+                self.controls[0, t] = self.a_actual
+                self.min_dist = min(self.min_dist, self.get_rho())
+    
+    def simulate(self):
+        acasxu = ACAS_XU(self.inputs0, self.slen, self.tdelta)
+        acasxu.run()
+        return acasxu.controls, int(acasxu.min_dist > 3000.0)
 
-        Parameters
-        ----------
-        inputs : array
-            signal
-        
-        Returns
-        -------
-        int
-            final action
-        """
-        a_prev = inputs[-1, -1]
-        nnet = self.nnets[a_prev]
-        outputs = nnet.evaluate_network(inputs[:5, -1])
-        action = np.argmin(outputs)
-        return action
+# To execute from root: python3 -m models.acas_xu
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO, 
+        format='%(asctime)s %(levelname)-5s %(message)s',
+        datefmt='%H:%M:%S')
+
+    inputs0 = np.array([5000.0, np.pi*1.75, -np.pi/2, 300.0, 100.0])
+    acasxu = ACAS_XU(inputs0, slen=20, tdelta=1.0, control='random')
+    acasxu.run(log=True)

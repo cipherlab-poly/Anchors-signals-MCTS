@@ -90,7 +90,7 @@ class MCTS:
 
     def _simulate(self, node):
         "Return the reward for a random simulation of `node`"
-        return node.get_reward(self.batch_size)
+        return node.simulate(self.batch_size)
     
     def _backpropagate(self, path, reward):
         "Send `reward` back up to the ancestors of `node`"

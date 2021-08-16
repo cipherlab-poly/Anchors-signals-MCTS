@@ -26,33 +26,18 @@ def simulate_thermostat(params) -> Simulator:
 def simulate_acas_xu(params) -> Simulator:
     "ACAS-XU: expect something like (s1 < 5000)(-1.5 < s2 < 0.5)(s3 < 0)(s7 = 3)]"
     
-    from models.acasxu import ACASXU
+    from models.acas_xu import ACAS_XU
 
-    slen = 50       # Signal length
-    memory = 5      # Length of the latest memory for explanations
-    v_own = 100
-    v_int = 100
-    tau = 0
-    a_prev = 0
-
-    inputs0 = np.array([3000.0, np.pi*1.75, -np.pi/2, 100.0, 100.0, 0, 0])
-    acas_xu = ACAS_XU(inputs0, slen=105, fault_start=100)
+    v_own = 300.0
+    v_int = 100.0
+    inputs0 = np.array([5000.0, np.pi*1.75, -np.pi/2, v_own, v_int])
+    acas_xu = ACAS_XU(inputs0, slen=20, tdelta=1.0, control='acas-xu')
     acas_xu.run()
-    smins = acas_xu.nnets[0].mins[:3] + [v_own, v_int, tau, a_prev]
-    smaxes = acas_xu.nnets[0].maxes[:3] + [v_own, v_int, tau, a_prev]
-    srange = []
-    for i in range(3):
-        srange.append((0, (smins[i], smaxes[i], 20)))
-    srange.append((1, [v_own]))
-    srange.append((1, [v_int]))
-    srange.append((1, [tau]))
-    srange.append((1, range(5)))
-    
-    params['s']     = acas_xu.signals
-    params['range'] = srange
-    params['y']     = acas_xu.a_actual
+    params['s'] = acas_xu.controls
+    params['range'] = [(1, list(range(5)))]
+    params['y'] = 'Safe'
     return acas_xu
-
+    
 def simulate_fault_at(params) -> Simulator:
     "Automatic transmission fault detection"
     from models.auto_transmission import AutoTransmission
@@ -63,10 +48,10 @@ def simulate_fault_at(params) -> Simulator:
     at = AutoTransmission(throttles, thetas, tdelta)
     at.run()
     params['s'] = np.array([throttles, thetas])[:, -5:]
-    params['y'] = True
     params['range'] = [(0, (0, 0.5, 5)), (0, (0, 0.7, 7))]
-    params['batch_size'] = 16
     params['epsilon'] = 0.02
+    params['y'] = 'Gear changed from 3 to 2'
+    params['past'] = True
     return at
     
 """
@@ -98,11 +83,11 @@ epsilon: float
 
 def main(params={}):
     #simulator = simulate_thermostat(params)
-    #simulator = simulate_acas_xu(params)
-    simulator = simulate_fault_at(params)
+    simulator = simulate_acas_xu(params)
+    #simulator = simulate_fault_at(params)
 
-    if not {'s', 'range', 'y'}.issubset(params.keys()):
-        logging.error('something undefined in params among {s, range, y}')
+    if not {'s', 'range'}.issubset(params.keys()):
+        logging.error('something undefined in params among {s, range}')
         return
     s           = params.get('s',           None)
     srange      = params.get('range',       None)
@@ -113,13 +98,13 @@ def main(params={}):
     max_depth   = params.get('max_depth',   5   )
     delta       = params.get('delta',       0.01)
     epsilon     = params.get('epsilon',     0.01)
+    past        = params.get('past',        False)
     
-    simulator.set_expected_output(y)
     logging.info(f'Signal and output to explain:\n{s} => {y}')
     tree = MCTS(batch_size=batch_size, max_depth=max_depth, 
                 delta=delta, epsilon=epsilon)
     stl = STL()
-    primitives = PrimitiveGenerator(s, srange, rho).generate()
+    primitives = PrimitiveGenerator(s, srange, rho, past).generate()
     logging.info('Initializing primitives...')
     nb = stl.init(primitives, simulator)
     logging.info(f'Done. {nb} primitives.')

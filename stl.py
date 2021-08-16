@@ -22,8 +22,8 @@ class Primitive:
     def __post_init__(self):
         if self._typ not in ['F', 'G']:
             raise ValueError('Invalid basic STL type')
-        elif self._a < 0 or self._b < 0:
-            raise ValueError('Invalid delay interval (negative bounds)')
+        elif self._a * self._b < 0 or (self._a < 0 and self._b == 0):
+            raise ValueError('Invalid delay interval')
         elif self._a > self._b:
             raise ValueError('Invalid delay interval (wrong order)') 
         elif self._comp not in ['<', '>', '=']:
@@ -32,25 +32,30 @@ class Primitive:
     def robust(self, s: np.ndarray) -> float:
         "Compute the robustness degree relative to signal `s`"
         
+        if self._b == -1:
+            slicing = s[self._i, self._a:]
+        else:
+            slicing = s[self._i, self._a:self._b + 1]
+        
         if self._typ == 'F':
             if self._comp == '<':
-                res = self._mu - np.min(s[self._i, self._a:self._b+1])
-                return res/self._normalize
+                res = self._mu - np.min(slicing)
+                return res / self._normalize
             elif self._comp == '>':
-                res = np.max(s[self._i, self._a:self._b+1]) - self._mu
-                return res/self._normalize
-            elif self._mu in s[self._i, self._a:self._b+1]:
+                res = np.max(slicing) - self._mu
+                return res / self._normalize
+            elif self._mu in slicing:
                 return 1
             else:
                 return -1
         else:
             if self._comp == '<':
-                res = self._mu - np.max(s[self._i, self._a:self._b+1])
-                return res/self._normalize
+                res = self._mu - np.max(slicing)
+                return res / self._normalize
             elif self._comp == '>':
-                res = np.min(s[self._i, self._a:self._b+1]) - self._mu
-                return res/self._normalize
-            elif all(v == self._mu for v in s[self._i, self._a:self._b+1]):
+                res = np.min(slicing) - self._mu
+                return res / self._normalize
+            elif all(v == self._mu for v in slicing):
                 return 1
             else:
                 return -1
@@ -83,7 +88,12 @@ class Primitive:
         return isinstance(other, Primitive) and hash(self) == hash(other)
 
     def __repr__(self):
-        return f'{self._typ}[{self._a},{self._b}](s{self._i+1}{self._comp}{self._mu:.2f})'
+        res = f'{self._typ}[{self._a},{self._b}](s{self._i+1}{self._comp}'
+        if self._comp == '=':
+            res += f'{self._mu})'
+        else:
+            res += f'{self._mu:.2f})'
+        return res
 
 
 @dataclass
@@ -91,27 +101,30 @@ class PrimitiveGenerator:
     "(static) generator of primitives and signals"
     
     # (instance attributes)
-    _s: np.ndarray  # signal being explained
-    _srange: list   # list of tuples
-                    # srange[d] = | (0, (min, max, stepsize))     if continuous
-                    #             | (1, list of the finite set)   if discrete
-    _rho: float     # robustness degree (~coverage) threshold
+    _s: np.ndarray      # signal being explained
+    _srange: list       # list of tuples
+                        # srange[d] = | (0, (min, max, stepsize))     if continuous
+                        #             | (1, list of the finite set)   if discrete
+    _rho: float         # robustness degree (~coverage) threshold
+    _past: bool = False # true if PtSTL, false if STL
         
     def generate(self) -> List[Primitive]:
         "Generate STL primitives whose robustness is greater than `rho`"
             
         result = []
         sdim, slen = self._s.shape
+        arange = range(-slen, 0) if self._past else range(slen)
         for d in range(sdim):
             # d-th component is continuous
             if self._srange[d][0] == 0:
                 smin, smax, stepsize = self._srange[d][1]
                 mus = np.linspace(smin, smax, num=stepsize, endpoint=False)[1:]
                 norm = smax - smin
-                for i in range(slen):
-                    for t in ['F', 'G']:
-                        j = i + int(t == 'G')
-                        l = [[t], [i], range(j, slen), [d], ['>', '<']]
+                for a in arange:
+                    for typ in ['F', 'G']:
+                        b = a + int(typ == 'G')
+                        brange = range(b, 0) if self._past else range(b, slen)
+                        l = [[typ], [a], brange, [d], ['>', '<']]
                         for r in itertools.product(*l):
                             stop = False
                             phi0 = Primitive(*r, mus[0], norm)
@@ -162,13 +175,15 @@ class PrimitiveGenerator:
             # d-th component is discrete
             elif self._srange[d][0] == 1:
                 mus = self._srange[d][1]
-                for i in range(self._s.shape[1]):
-                    l = [['F', 'G'], [i], range(i, self._s.shape[1])]
-                    l += [[d], ['='], mus]
-                    for r in itertools.product(*l):
-                        primitive = Primitive(*r)
-                        if primitive.robust(self._s) >= self._rho:
-                            result.append(primitive)
+                for a in arange:
+                    for typ in ['F', 'G']:
+                        b = a + int(typ == 'G')
+                        brange = range(b, 0) if self._past else range(b, slen)
+                        l = [[typ], [a], brange, [d], ['='], mus]
+                        for r in itertools.product(*l):
+                            primitive = Primitive(*r, 1.0)
+                            if primitive.robust(self._s) >= self._rho:
+                                result.append(primitive)
             else:
                 raise ValueError(f'{d}-th component continuous or discrete?')
         return result
@@ -181,7 +196,6 @@ class STL(object):
     __primitives        = []    # list of generated primitives
     __parents           = {}    # dict {child: parents} among primitives
     __simulator         = None
-    __expected_output   = None
 
     def __new__(cls, indices: FrozenSet[int]=frozenset()):
         for child in indices.copy():
@@ -220,14 +234,14 @@ class STL(object):
         return {STL(self._indices.union([i])) 
             for i in set(range(length)) - parents} - {self}
 
-    def get_reward(self, batch_size: int) -> int:
-        reward = 0
+    def simulate(self, batch_size: int) -> int:
+        total_reward = 0
         for _ in range(batch_size):
-            sample, output = STL.__simulator.simulate()
+            sample, reward = STL.__simulator.simulate()
             while not self._satisfy(sample):
-                sample, output = STL.__simulator.simulate()
-            reward += STL.__simulator.reward(output)
-        return reward
+                sample, reward = STL.__simulator.simulate()
+            total_reward += reward
+        return total_reward
 
     def __len__(self):
         return len(self._indices)
@@ -245,15 +259,6 @@ from abc import ABC, abstractmethod
 
 class Simulator(ABC):
     @abstractmethod
-    def set_expected_output(self, y):
-        self.expected_output = y
-    
-    @abstractmethod
     def simulate(self):
         "Return a simulated signal and its reward"
         return (np.zeros(0), 0)
-
-    @abstractmethod
-    def reward(self, output):
-        "Returns 0 or 1 by comparing `output` to the expected output"
-        return 1
