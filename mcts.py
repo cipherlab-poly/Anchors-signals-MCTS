@@ -33,8 +33,8 @@ class MCTS:
 
     def choose(self, node):
         "Choose the best successor of node. (Choose a move in the game)"
-        best = heapq.nlargest(5, self.children[node], key=self._score)
-        worst = heapq.nsmallest(5, self.children[node], key=self._score)
+        best = heapq.nlargest(10, self.children[node], key=self._score)
+        worst = heapq.nsmallest(10, self.children[node], key=self._score)
         return best + worst
 
     def train(self, node):

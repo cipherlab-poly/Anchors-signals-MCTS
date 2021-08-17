@@ -35,10 +35,13 @@ class Thermostat(Simulator):
                     on = 0
         return on
     
-    def simulate(self, expected_output):
-        tm = Thermostat(self.out_temp, self.exp_temp, self.latency, self.length)
-        tm.run()
-        return np.array([tm.temps]), int(tm.on == expected_output)
+    def simulate(self, stl, expected_output):
+        sample = None
+        while not stl.satisfy(sample):
+            tm = Thermostat(self.out_temp, self.exp_temp, self.latency, self.length)
+            tm.run()
+            sample = np.array([tm.temps])
+        return int(tm.on == expected_output)
         
     def plot(self, save=False):
         import matplotlib.pyplot as plt

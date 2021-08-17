@@ -153,15 +153,17 @@ class AutoTransmission(Simulator):
             self.espds.append(self.espd)
             self.update()
     
-    def simulate(self):
-        throttles = self.throttles.copy()
-        thetas = self.thetas.copy()
-        throttles[:5:] = np.random.randint(0, 5, 5) * 0.1
-        thetas[-5:] = np.random.randint(0, 8, 5) * 0.1
-        at = AutoTransmission(self.throttles, thetas, self.tdelta)
-        at.run()
-        return (np.array([throttles, thetas])[:, -5:], 
-                int(at.gears[-2] == 3 and at.gears[-1] == 2))
+    def simulate(self, stl):
+        sample = None
+        while not stl.satisfy(sample):
+            throttles = self.throttles.copy()
+            thetas = self.thetas.copy()
+            throttles[:5:] = np.random.randint(0, 5, 5) * 0.1
+            thetas[-5:] = np.random.randint(0, 8, 5) * 0.1
+            at = AutoTransmission(self.throttles, thetas, self.tdelta)
+            at.run()
+            sample = np.array([throttles, thetas])[:, -5:]
+        return int(at.gears[-2] == 3 and at.gears[-1] == 2)
 
     def plot(self):
         """Plots the engine and vehicle speed.

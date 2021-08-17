@@ -30,8 +30,8 @@ def simulate_acas_xu(params) -> Simulator:
 
     v_own = 300.0
     v_int = 100.0
-    inputs0 = np.array([5000.0, np.pi*1.75, -np.pi/2, v_own, v_int])
-    acas_xu = ACAS_XU(inputs0, slen=20, tdelta=1.0, control='acas-xu')
+    state0 = np.array([5000.0, np.pi*1.75, -np.pi/2, v_own, v_int])
+    acas_xu = ACAS_XU(state0, tdelta=1.0, slen=20)
     acas_xu.run()
     params['s'] = acas_xu.controls
     params['range'] = [(1, list(range(5)))]
@@ -92,7 +92,7 @@ def main(params={}):
     s           = params.get('s',           None)
     srange      = params.get('range',       None)
     y           = params.get('y',           None)
-    batch_size  = params.get('batch_size',  256 )
+    batch_size  = params.get('batch_size',  128 )
     tau         = params.get('tau',         0.95)
     rho         = params.get('rho',         0.01)
     max_depth   = params.get('max_depth',   5   )

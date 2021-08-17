@@ -79,6 +79,9 @@ class Primitive:
         "Verify if satisfied by signal `s`"
         return self.robust(s) > 0
 
+    def get_params(self):
+        return (self._typ, self._a, self._b, self._i, self._comp, self._mu)
+
     def __hash__(self):
         if self._a == self._b:
             return hash(('F', self._a, self._b, self._i, self._comp, self._mu))
@@ -222,8 +225,10 @@ class STL(object):
             for child in range(nb)}
         return nb
 
-    def _satisfy(self, s: np.ndarray) -> bool:
+    def satisfy(self, s: np.ndarray) -> bool:
         "Verify if STL is satisfied by signal `s`"
+        if s is None:
+            return False
         return all(STL.__primitives[i].satisfy(s) for i in self._indices)
     
     def get_children(self) -> Set[STL]:
@@ -234,14 +239,11 @@ class STL(object):
         return {STL(self._indices.union([i])) 
             for i in set(range(length)) - parents} - {self}
 
+    def get_params(self) -> List:
+        return [STL.__primitives[i].get_params() for i in self._indices]
+
     def simulate(self, batch_size: int) -> int:
-        total_reward = 0
-        for _ in range(batch_size):
-            sample, reward = STL.__simulator.simulate()
-            while not self._satisfy(sample):
-                sample, reward = STL.__simulator.simulate()
-            total_reward += reward
-        return total_reward
+        return sum(STL.__simulator.simulate(self) for _ in range(batch_size))
 
     def __len__(self):
         return len(self._indices)
@@ -259,6 +261,6 @@ from abc import ABC, abstractmethod
 
 class Simulator(ABC):
     @abstractmethod
-    def simulate(self):
-        "Return a simulated signal and its reward"
-        return (np.zeros(0), 0)
+    def simulate(self, stl):
+        "Simulate a signal satisfied by `stl` and return the corresponding reward"
+        return 0

@@ -12,8 +12,8 @@ class ACAS_XU(Simulator):
     """
     Parameters
     ----------
-    inputs0 : array
-        initial inputs
+    state0 : array
+        initial state
             rho     [0.0, 60760.0]
             theta   [-3.141593, 3.141593]
             psi     [-3.141593, 3.141593]
@@ -23,21 +23,35 @@ class ACAS_XU(Simulator):
             a_prev  should be one of [0, 1, 2, 3, 4]
     tdelta : float
         time between two actions
+    controls : array of {0, 1, 2, 3, 4}
+        | None if using acas-xu neural network
+        | specified controls - {0: 'Clear of Conflict', 
+        |   1: 'Weak Left turn', 2: 'Weak Right turn',
+        |   3: 'Strong Left turn', 4: 'Strong Right turn'}
     plot : bool
         for animation
     save : bool
         indicating if we save the animation as gif
     """
-    def __init__(self, inputs0, slen, tdelta, control='random', plot=False, save=False):
-        self.inputs0 = inputs0
-        self.slen = slen
+    def __init__(self, state0, tdelta, controls=None, slen=None, plot=False, save=False):
+        self.state0 = state0
         self.tdelta = tdelta
+
+        if controls is None and slen is None:
+            raise ValueError('should specify either `controls` or `slen`')
         
-        rate = 1.5*np.pi/180
+        if controls is None:
+            self.controls = np.zeros((1, slen))
+            self.slen = slen
+        else:
+            self.controls = np.array(controls).reshape((1, -1))
+            self.slen = len(controls)
+        
+        rate = 1.5 * np.pi / 180
         self.heading_rate = {0: 0, 1: rate, 2: -rate, 3: 2*rate, 4: -2*rate}
-        rho0, theta0, psi0 = inputs0[:3]
-        self.norm_v_own = inputs0[3]
-        self.norm_v_int = inputs0[4]
+        rho0, theta0, psi0 = state0[:3]
+        self.norm_v_own = state0[3]
+        self.norm_v_int = state0[4]
         self.x_int = np.array([0., -rho0/2])
         self.v_int = np.array([0., self.norm_v_int])
         self.x_own = rho0 * np.array([np.sin(theta0-psi0), np.cos(theta0-psi0)])
@@ -46,27 +60,15 @@ class ACAS_XU(Simulator):
         self.a_actual = 0
         self.clock = 0
 
-        self.min_dist = inputs0[0]
-        self.controls = np.zeros((1, slen))
+        self.min_dist = float('inf')
         
         # control with acas-xu neural network
-        self.control = control
-        if control == 'acas-xu':
-            self.nnets = {}
+        self.nnets = {}
+        if controls is None:
             for a_prev in range(5):
                 filename = dirname(abspath(__file__)) + '/acasxu/ACASXU'
                 filename += f'_experimental_v2a_{a_prev+1}_1.nnet'
                 self.nnets[a_prev] = NNet(filename)
-        
-        # control randomly
-        else:
-            self.a_next = {
-                0: [0, 1, 2, 3, 4],
-                1: [0, 1, 3],
-                2: [0, 2, 4],
-                3: [1, 3],
-                4: [2, 4]
-            }
         
         self.plot = plot
         self.save = save
@@ -126,25 +128,26 @@ class ACAS_XU(Simulator):
                 1: 'Weak Left turn',   2: 'Weak Right turn',
                 3: 'Strong Left turn', 4: 'Strong Right turn'}[action]
 
-    def evaluate(self):
+    def _control(self):
         self.a_prev = self.a_actual
-        if self.control == 'acas-xu':
+        if len(self.nnets):
             nnet = self.nnets[self.a_actual]
             outputs = nnet.evaluate_network(self.get_inputs())
             self.a_actual = np.argmin(outputs)
+            self.controls[0, self.clock] = self.a_actual
         else:
-            self.a_actual = np.random.choice(self.a_next[self.a_actual])
+            self.a_actual = self.controls[0, self.clock]
     
-    def update(self):
-        self.evaluate()
+    def _update(self):
+        self._control()
         rate = self.heading_rate[self.a_actual]
         cos = np.cos(rate * self.tdelta)
         sin = np.sin(rate * self.tdelta)
-        rot_matrix = np.array([[cos, -sin], [sin, cos]])
-        self.v_own = rot_matrix @ self.v_own
+        self.v_own = np.array([[cos, -sin], [sin, cos]]) @ self.v_own
         self.x_own += (self.v_own - self.v_int) * self.tdelta
         self.x_int += self.v_int * self.tdelta
         self.clock += 1
+        self.min_dist = min(self.min_dist, self.get_rho())
 
     def _draw_init(self):
         self.lines_own[-1].set_data(self.xs_own[-1], self.ys_own[-1])
@@ -152,13 +155,13 @@ class ACAS_XU(Simulator):
         return *self.lines_own, self.line_int
     
     def _animate(self, t):
-        if self.clock >= self.slen:
+        if self.clock >= self.slen - 1:
             self.anim.event_source.stop()
             self.anim_stop = True
         
         xs_own = self.x_int[0] + self.x_own[0]
         ys_own = self.x_int[1] + self.x_own[1]
-        self.update()
+        self._update()
         
         if self.a_actual != self.a_prev:
             self.xs_own.append([xs_own])
@@ -195,17 +198,32 @@ class ACAS_XU(Simulator):
                 self.anim.save(filename, writer=animation.PillowWriter(fps=75))
             plt.show()
         else:
-            for t in range(self.slen):
-                self.update()
+            for _ in range(self.slen):
+                self._update()
                 if log:
                     self.log_state()
-                self.controls[0, t] = self.a_actual
-                self.min_dist = min(self.min_dist, self.get_rho())
     
-    def simulate(self):
-        acasxu = ACAS_XU(self.inputs0, self.slen, self.tdelta)
+    def simulate(self, stl):
+        params = stl.get_params()
+        controls = None
+        while not stl.satisfy(controls):
+            controls = - np.ones((1, self.slen), dtype=np.int8)
+            for param in params:
+                typ, a, b, i, comp, mu = param
+                if comp == '=':
+                    b1 = b + 1 if b != -1 else self.slen
+                    if typ == 'G':
+                        controls[0, a:b1] = mu
+                    else:
+                        lucky = np.random.choice(range(a, b + 1))
+                        controls[0, lucky] = mu
+            for c in range(self.slen):
+                if controls[0, c] == -1:
+                    controls[0, c] = np.random.randint(5)
+
+        acasxu = ACAS_XU(self.state0, self.tdelta, controls=controls[0])
         acasxu.run()
-        return acasxu.controls, int(acasxu.min_dist > 3000.0)
+        return int(acasxu.min_dist > 3300.0)
 
 # To execute from root: python3 -m models.acas_xu
 if __name__ == '__main__':
@@ -213,6 +231,8 @@ if __name__ == '__main__':
         format='%(asctime)s %(levelname)-5s %(message)s',
         datefmt='%H:%M:%S')
 
-    inputs0 = np.array([5000.0, np.pi*1.75, -np.pi/2, 300.0, 100.0])
-    acasxu = ACAS_XU(inputs0, slen=20, tdelta=1.0, control='random')
-    acasxu.run(log=True)
+    state0 = np.array([5000.0, np.pi*1.75, -np.pi/2, 300.0, 100.0])
+    #controls = [2, 1, 4, 4, 4, 3, 4, 4, 0, 1, 3, 1, 1, 3, 0, 0, 0, 2, 1, 2]
+    acasxu = ACAS_XU(state0, tdelta=1.0, slen=20)#controls=controls)
+    acasxu.run()
+    logging.info(f'min dist = {acasxu.min_dist:.2f}')
