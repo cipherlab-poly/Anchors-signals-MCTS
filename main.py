@@ -23,21 +23,35 @@ def simulate_thermostat(params) -> Simulator:
     params['y']     = tm.on
     return tm
 
-def simulate_acas_xu(params) -> Simulator:
-    "ACAS-XU: expect something like (s1 < 5000)(-1.5 < s2 < 0.5)(s3 < 0)(s7 = 3)]"
-    
-    from models.acas_xu import ACAS_XU
+def simulate_acas_xu1(params) -> Simulator:
+    from models.acas_xu1 import ACAS_XU1
 
-    v_own = 300.0
-    v_int = 100.0
-    state0 = np.array([5000.0, np.pi*1.75, -np.pi/2, v_own, v_int])
-    acas_xu = ACAS_XU(state0, tdelta=1.0, slen=20)
-    acas_xu.run()
-    params['s'] = acas_xu.controls
+    state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
+    acasxu = ACAS_XU1(state0, tdelta=1.0, slen=20)
+    acasxu.run()
+    params['s'] = acasxu.controls
     params['range'] = [(1, list(range(5)))]
     params['y'] = 'Safe'
-    return acas_xu
+    return acasxu
+
+def simulate_acas_xu2(params) -> Simulator:
+    from models.acas_xu2 import ACAS_XU2
+
+    state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
+    acasxu = ACAS_XU2(state0, tdelta=1.0, slen=10)
+    acasxu.load_nnets()
+    acasxu.run()
+    params['s'] = acasxu.sample
+    smins = [0.0, 0.0, -np.pi]
+    smaxes = [8000.0, np.pi, 0.0]
+    srange = [(0, (smins[i], smaxes[i], 5)) for i in range(3)]
     
+    params['range'] = srange
+    params['y'] = acasxu.a_actual
+    params['epsilon'] = 0.02
+    params['past'] = True
+    return acasxu
+
 def simulate_fault_at(params) -> Simulator:
     "Automatic transmission fault detection"
     from models.auto_transmission import AutoTransmission
@@ -83,7 +97,8 @@ epsilon: float
 
 def main(params={}):
     #simulator = simulate_thermostat(params)
-    simulator = simulate_acas_xu(params)
+    simulator = simulate_acas_xu1(params)
+    #simulator = simulate_acas_xu2(params)
     #simulator = simulate_fault_at(params)
 
     if not {'s', 'range'}.issubset(params.keys()):
@@ -92,7 +107,7 @@ def main(params={}):
     s           = params.get('s',           None)
     srange      = params.get('range',       None)
     y           = params.get('y',           None)
-    batch_size  = params.get('batch_size',  128 )
+    batch_size  = params.get('batch_size',  16  )
     tau         = params.get('tau',         0.95)
     rho         = params.get('rho',         0.01)
     max_depth   = params.get('max_depth',   5   )
@@ -109,14 +124,12 @@ def main(params={}):
     nb = stl.init(primitives, simulator)
     logging.info(f'Done. {nb} primitives.')
     
-    stop = False
-    while not stop:
+    while True:
         logging.info('Choosing best primitive...')
         try:
             tree.train(stl)
         except KeyboardInterrupt:
             logging.warning('Interrupted')
-            stop = True
         finally:
             stls = tree.choose(stl)
             for stl in stls:

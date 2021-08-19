@@ -8,7 +8,8 @@ from stl import Simulator
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
-class ACAS_XU(Simulator):
+"Explain why acas-xu is safe (distance to intruder > 3000)"
+class ACAS_XU1(Simulator):
     """
     Parameters
     ----------
@@ -19,15 +20,18 @@ class ACAS_XU(Simulator):
             psi     [-3.141593, 3.141593]
             v_own   [100.0, 1200.0]
             v_int   [0.0, 1200.0]
-            tau     should be one of [0, 1, 5, 10, 20, 40, 60, 80, 100]
-            a_prev  should be one of [0, 1, 2, 3, 4]
     tdelta : float
         time between two actions
-    controls : array of {0, 1, 2, 3, 4}
+    controls : list of controls 0 ~ 4
         | None if using acas-xu neural network
-        | specified controls - {0: 'Clear of Conflict', 
-        |   1: 'Weak Left turn', 2: 'Weak Right turn',
-        |   3: 'Strong Left turn', 4: 'Strong Right turn'}
+        | specified controls - 
+            | 0: 'Clear of Conflict',
+            | 1: 'Weak Left turn' 
+            | 2: 'Weak Right turn'
+            | 3: 'Strong Left turn' 
+            | 4: 'Strong Right turn'
+    slen : int
+        signal length of acas-xu controller if `controls` is not specified.
     plot : bool
         for animation
     save : bool
@@ -54,7 +58,8 @@ class ACAS_XU(Simulator):
         self.norm_v_int = state0[4]
         self.x_int = np.array([0., -rho0/2])
         self.v_int = np.array([0., self.norm_v_int])
-        self.x_own = rho0 * np.array([np.sin(theta0-psi0), np.cos(theta0-psi0)])
+        angle = theta0 + psi0
+        self.x_own = rho0 * np.array([-np.sin(angle), np.cos(angle)])
         self.v_own = self.norm_v_own * np.array([np.sin(psi0), np.cos(psi0)])
         self.a_prev = 0
         self.a_actual = 0
@@ -89,7 +94,7 @@ class ACAS_XU(Simulator):
             self.xs_int = [self.x_int[0]]
             self.ys_int = [self.x_int[1]]
             self.anim_stop = False
-
+    
     def get_rho(self):
         rho = np.sqrt(self.x_own[0]**2 + self.x_own[1]**2)
         return max(rho, 5)
@@ -97,7 +102,7 @@ class ACAS_XU(Simulator):
     def get_theta(self):
         rho = np.sqrt(self.x_own[0]**2 + self.x_own[1]**2)
         norm_v_own = np.sqrt(self.v_own[0]**2 + self.v_own[1]**2)
-        dot = np.dot(self.x_own, self.v_own)/(rho*norm_v_own)
+        dot = np.dot(self.x_own, self.v_own) / (rho*norm_v_own)
         theta = np.arccos(-dot)
         cross = self.x_own[0] * self.v_own[1] - self.x_own[1] * self.v_own[0]
         if cross < 0:
@@ -138,7 +143,7 @@ class ACAS_XU(Simulator):
         else:
             self.a_actual = self.controls[0, self.clock]
     
-    def _update(self):
+    def _update(self, log=False):
         self._control()
         rate = self.heading_rate[self.a_actual]
         cos = np.cos(rate * self.tdelta)
@@ -148,6 +153,8 @@ class ACAS_XU(Simulator):
         self.x_int += self.v_int * self.tdelta
         self.clock += 1
         self.min_dist = min(self.min_dist, self.get_rho())
+        if log:
+            self.log_state()
 
     def _draw_init(self):
         self.lines_own[-1].set_data(self.xs_own[-1], self.ys_own[-1])
@@ -185,7 +192,7 @@ class ACAS_XU(Simulator):
             self.anim.event_source.stop()
             self.anim_stop = True
 
-    def run(self, log=False):
+    def run(self):
         "Runs the simulation."
         if self.plot:
             self.fig.canvas.mpl_connect('button_press_event', self._on_click)
@@ -200,8 +207,6 @@ class ACAS_XU(Simulator):
         else:
             for _ in range(self.slen):
                 self._update()
-                if log:
-                    self.log_state()
     
     def simulate(self, stl):
         params = stl.get_params()
@@ -221,18 +226,19 @@ class ACAS_XU(Simulator):
                 if controls[0, c] == -1:
                     controls[0, c] = np.random.randint(5)
 
-        acasxu = ACAS_XU(self.state0, self.tdelta, controls=controls[0])
+        acasxu = ACAS_XU1(self.state0, self.tdelta, controls=controls[0])
         acasxu.run()
         return int(acasxu.min_dist > 3300.0)
 
-# To execute from root: python3 -m models.acas_xu
+# To execute from root: python3 -m models.acas_xu1
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, 
         format='%(asctime)s %(levelname)-5s %(message)s',
         datefmt='%H:%M:%S')
 
-    state0 = np.array([5000.0, np.pi*1.75, -np.pi/2, 300.0, 100.0])
+    state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
     #controls = [2, 1, 4, 4, 4, 3, 4, 4, 0, 1, 3, 1, 1, 3, 0, 0, 0, 2, 1, 2]
-    acasxu = ACAS_XU(state0, tdelta=1.0, slen=20)#controls=controls)
+    acasxu = ACAS_XU1(state0, tdelta=1.0, slen=20, plot=True)#controls=controls)
     acasxu.run()
     logging.info(f'min dist = {acasxu.min_dist:.2f}')
+    logging.info(f'{acasxu.controls}')

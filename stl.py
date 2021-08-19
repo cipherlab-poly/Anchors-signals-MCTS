@@ -32,10 +32,16 @@ class Primitive:
     def robust(self, s: np.ndarray) -> float:
         "Compute the robustness degree relative to signal `s`"
         
-        if self._b == -1:
-            slicing = s[self._i, self._a:]
-        else:
-            slicing = s[self._i, self._a:self._b + 1]
+        try:
+            if self._b == -1:
+                slicing = s[self._i, self._a:]
+            else:
+                slicing = s[self._i, self._a:self._b + 1]
+        except IndexError:
+            return -1
+
+        if not len(slicing):
+            return -1
         
         if self._typ == 'F':
             if self._comp == '<':
