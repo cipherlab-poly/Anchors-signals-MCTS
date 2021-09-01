@@ -31,7 +31,7 @@ def simulate_acas_xu1(params) -> Simulator:
     acasxu.run()
     params['s'] = acasxu.controls
     params['range'] = [(1, list(range(5)))]
-    params['y'] = 'Safe'
+    params['y'] = 'Distance remains > 3000 ft'
     return acasxu
 
 def simulate_acas_xu2(params) -> Simulator:
@@ -41,25 +41,36 @@ def simulate_acas_xu2(params) -> Simulator:
     acasxu = ACAS_XU2(state0, tdelta=1.0, slen=10)
     acasxu.load_nnets()
     acasxu.run()
-    params['s'] = acasxu.sample
     smins = [0.0, 0.0, -np.pi]
     smaxes = [8000.0, np.pi, 0.0]
-    srange = [(0, (smins[i], smaxes[i], 5)) for i in range(3)]
-    
-    params['range'] = srange
+    params['s'] = acasxu.sample
+    params['range'] = [(0, (smins[i], smaxes[i], 10)) for i in range(3)]
     params['y'] = acasxu.a_actual
     params['epsilon'] = 0.02
     params['past'] = True
     return acasxu
 
-def simulate_fault_at(params) -> Simulator:
-    "Automatic transmission fault detection"
-    from models.auto_transmission import AutoTransmission
+def simulate_at1(params) -> Simulator:
+    from models.auto_transmission1 import AutoTransmission1
 
     tdelta = 0.5
-    throttles = [0.3]*24
-    thetas = [0.]*15 + [0.5]*9
-    at = AutoTransmission(throttles, thetas, tdelta)
+    throttles = [0.5]*24
+    thetas = [0.]*24
+    at = AutoTransmission1(throttles, thetas, tdelta)
+    at.run()
+    params['s'] = at.gears
+    params['range'] = [(1, list(range(1, 5)))]
+    params['epsilon'] = 0.01
+    params['y'] = 'Engine speed remains < 5000 rpm'
+    return at
+
+def simulate_at2(params) -> Simulator:
+    from models.auto_transmission2 import AutoTransmission2
+
+    tdelta = 0.5
+    throttles = [0.3]*23
+    thetas = [0.]*15 + [0.5]*8
+    at = AutoTransmission2(throttles, thetas, tdelta)
     at.run()
     params['s'] = np.array([throttles, thetas])[:, -5:]
     params['range'] = [(0, (0, 0.5, 5)), (0, (0, 0.7, 7))]
@@ -97,9 +108,10 @@ epsilon: float
 
 def main(params={}):
     #simulator = simulate_thermostat(params)
-    simulator = simulate_acas_xu1(params)
+    #simulator = simulate_acas_xu1(params)
     #simulator = simulate_acas_xu2(params)
-    #simulator = simulate_fault_at(params)
+    #simulator = simulate_at1(params)
+    simulator = simulate_at2(params)
 
     if not {'s', 'range'}.issubset(params.keys()):
         logging.error('something undefined in params among {s, range}')
@@ -131,7 +143,7 @@ def main(params={}):
         except KeyboardInterrupt:
             logging.warning('Interrupted')
         finally:
-            stls = tree.choose(stl)
+            stls = tree.choose(stl, nb=5)
             for stl in stls:
                 q, n = tree.Q[stl], tree.N[stl]
                 logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')

@@ -3,8 +3,8 @@ from joblib import load
 import os.path
 from stl import Simulator
 
-class AutoTransmission(Simulator):
-    def __init__(self, throttles, thetas, tdelta, params={}):
+class AutoTransmission1(Simulator):
+    def __init__(self, throttles, thetas, tdelta, gears=None, params={}):
         """
         Parameters
         ----------
@@ -21,32 +21,39 @@ class AutoTransmission(Simulator):
             raise ValueError(f'throttles should be within [0, 1], got {throttles}')
         if any(theta < -np.pi/2 or theta > np.pi/2 for theta in thetas):
             raise ValueError(f'thetas should be within [-pi/2, pi/2], got {thetas}')
+        if gears is not None and len(throttles) != len(gears):
+            raise ValueError('gears wrong duration')
         
         self.slen = len(throttles)
         self.throttles = throttles  # Throttle: [0, 1]
         self.thetas = thetas        # Road slope (rad): [0, pi/2]
         self.tdelta = tdelta        # Time step
+
+        self.auto = (gears is None)
+        if self.auto:
+            self.gears = np.zeros((1, self.slen))
+        else:
+            self.gears = np.array(gears).reshape((1, -1))
+        
         self.vspd = 0               # Vehicle speed (km/h)
         self.espd = 1000            # Engine speed (rpm)
         self.gear = 0               # Gear: 0, 1, 2, 3, 4
         self.params = params
-        self.t = 0
-        self.ts = []
-        self.espds = []
-        self.vspds = []
-        self.gears = []
+        self.clock = 0
         self.shifts = { 
             '2-1': (0.5, 0.9, 5, 30), '1-2': (0.25, 0.9, 10, 40),
             '3-2': (0.05, 0.9, 20, 50), '2-3': (0.35, 0.9, 30, 70),
             '4-3': (0.05, 0.9, 35, 80), '3-4': (0.35, 0.9, 50, 100)
         }
 
+        self.max_espd = 0.0
+
     def shift_gear(self):
         """Inspired from:
             https://www.mathworks.com/help/simulink/slref/modeling-an-automatic-transmission-controller.html
         """
         def speed(shift):
-            throttle = self.throttles[self.t]
+            throttle = self.throttles[self.clock]
             x1, x2, y1, y2 = self.shifts[shift]
             if throttle <= x1:
                 return y1 * 1.61
@@ -57,33 +64,37 @@ class AutoTransmission(Simulator):
         def nearest_gear(x):
             return abs(x - self.gear)
         
-        shift = min(self.shifts, key=lambda shift: abs(speed(shift) - self.vspd))
-        if speed(shift) >= self.vspd:
-            if shift == '2-1':
-                self.gear = 1
-            elif shift == '1-2':
-                self.gear = min([1, 2], key=nearest_gear)
-            elif shift == '3-2':
-                self.gear = 2
-            elif shift == '2-3':
-                self.gear = min([2, 3], key=nearest_gear)
-            elif shift == '4-3':
-                self.gear = 3
-            elif shift == '3-4':
-                self.gear = min([3, 4], key=nearest_gear)
-        elif speed(shift) <= self.vspd:
-            if shift == '2-1':
-                self.gear = min([1, 2], key=nearest_gear)
-            elif shift == '1-2':
-                self.gear = 2
-            elif shift == '3-2':
-                self.gear = min([2, 3], key=nearest_gear)
-            elif shift == '2-3':
-                self.gear = 3
-            elif shift == '4-3':
-                self.gear = min([3, 4], key=nearest_gear)
-            elif shift == '3-4':
-                self.gear = 4
+        if self.auto:
+            shift = min(self.shifts, key=lambda shift: abs(speed(shift) - self.vspd))
+            if speed(shift) >= self.vspd:
+                if shift == '2-1':
+                    self.gear = 1
+                elif shift == '1-2':
+                    self.gear = min([1, 2], key=nearest_gear)
+                elif shift == '3-2':
+                    self.gear = 2
+                elif shift == '2-3':
+                    self.gear = min([2, 3], key=nearest_gear)
+                elif shift == '4-3':
+                    self.gear = 3
+                elif shift == '3-4':
+                    self.gear = min([3, 4], key=nearest_gear)
+            elif speed(shift) <= self.vspd:
+                if shift == '2-1':
+                    self.gear = min([1, 2], key=nearest_gear)
+                elif shift == '1-2':
+                    self.gear = 2
+                elif shift == '3-2':
+                    self.gear = min([2, 3], key=nearest_gear)
+                elif shift == '2-3':
+                    self.gear = 3
+                elif shift == '4-3':
+                    self.gear = min([3, 4], key=nearest_gear)
+                elif shift == '3-4':
+                    self.gear = 4
+            self.gears[0, self.clock] = self.gear
+        else:
+            self.gear = self.gears[0, self.clock]
 
     def update(self):
         """Updates the state machine. Modified from:
@@ -106,13 +117,14 @@ class AutoTransmission(Simulator):
         omega_m = self.params.get('omega_m', 420.)  # peak engine angular speed
         beta = self.params.get('beta', 0.4)         # peak engine rolloff
 
-        throttle = self.throttles[self.t]
-        theta = self.thetas[self.t]
+        throttle = self.throttles[self.clock]
+        theta = self.thetas[self.clock]
         ratio = alpha[max(self.gear - 1, 0)]
         omega = ratio * self.vspd / 3.6
         torque = max(Tm * (1 - beta * (omega / omega_m - 1)**2), 0)
         F = ratio * torque * throttle
-        self.espd = max(omega * 9.55, 500)
+        self.espd = max(omega * 9.55, 500.0)
+        self.max_espd = max(self.max_espd, self.espd)
 
         # Gravity due to the road slope.
         Fg = m * g * np.sin(theta)
@@ -136,71 +148,95 @@ class AutoTransmission(Simulator):
         self.vspd += dv * self.tdelta
         self.vspd = max(self.vspd, 0)
         self.shift_gear()
-        self.t += 1
+        self.clock += 1
 
     def run(self):
-        """Runs the simulation.
-        
-        Parameters
-        ----------
-        noise : bool
-            add Gaussian random noise to the sensors (vehicle speed, engine speed)
-        """
-        for t in range(self.slen):
-            self.ts.append(t * self.tdelta)
-            self.gears.append(self.gear)
-            self.vspds.append(self.vspd)
-            self.espds.append(self.espd)
+        for _ in range(self.slen):
             self.update()
-    
+        
     def simulate(self, stl):
-        sample = None
-        while not stl.satisfy(sample):
-            throttles = self.throttles.copy()
-            thetas = self.thetas.copy()
-            throttles[:5:] = np.random.randint(0, 5, 5) * 0.1
-            thetas[-5:] = np.random.randint(0, 8, 5) * 0.1
-            at = AutoTransmission(self.throttles, thetas, self.tdelta)
-            at.run()
-            sample = np.array([throttles, thetas])[:, -5:]
-        return int(at.gears[-2] == 3 and at.gears[-1] == 2)
+        params = stl.get_params()
+        gears = None
+        while not stl.satisfy(gears):
+            gears = - np.ones((1, self.slen), dtype=np.int8)
+            for param in params:
+                typ, a, b, i, comp, mu = param
+                if comp == '=':
+                    b1 = b + 1 if b != -1 else self.slen
+                    if typ == 'G':
+                        gears[0, a:b1] = mu
+                    else:
+                        lucky = np.random.choice(range(a, b + 1))
+                        gears[0, lucky] = mu
+            
+            if gears[0, 0] == -1:
+                gears[0, 0] = 1
+            for t in range(1, self.slen):
+                if gears[0, t] == -1:
+                    if gears[0, t-1] == 1:
+                        gears[0, t] = np.random.choice([1, 2])
+                    elif gears[0, t-1] == 4:
+                        gears[0, t] = np.random.choice([3, 4])
+                    else:
+                        gears[0, t] = gears[0, t-1] + np.random.randint(-1, 2)
+
+        at = AutoTransmission1(self.throttles, self.thetas, self.tdelta, 
+                                gears=gears[0])
+        at.run()
+        return int(at.max_espd < 5000.0)
 
     def plot(self):
-        """Plots the engine and vehicle speed.
+        ts = []
+        espds = []
+        vspds = []
+        gears = []
+    
+        for t in range(self.slen):
+            ts.append(t * self.tdelta)
+            gears.append(self.gear)
+            vspds.append(self.vspd)
+            espds.append(self.espd)
+            self.update()
         
-        Parameters
-        ----------
-        save : bool
-            indicating if we save the plot
-        """
         fig, axs = plt.subplots(2)
-        axs[0].plot(self.ts, self.espds, color='b')
+        axs[0].plot(ts, espds, color='b')
         axs[0].set_xlabel('time (s)')
         axs[0].set_ylabel('engine speed (rpm)', color='b')
-        axs[1].plot(self.ts, self.vspds, color='b')
+        axs[1].plot(ts, vspds, color='b')
         axs[1].set_xlabel('time (s)')
         axs[1].set_ylabel('vehicle speed (km/h)', color='b')
         ax2 = axs[0].twinx()  # a second axe that shares the same x-axis
         ax2.set_ylabel('gear', color='r')
-        ax2.step(self.ts, self.gears, 'r-', where='post')
+        ax2.step(ts, gears, 'r-', where='post')
         plt.yticks(range(5))
         ax3 = axs[1].twinx()  # a second axe that shares the same x-axis
         ax3.set_ylabel('gear', color='r')
-        ax3.step(self.ts, self.gears, 'r-', where='post')
+        ax3.step(ts, gears, 'r-', where='post')
         plt.yticks(range(5))
         for ax in axs.flat:
             ax.label_outer()
 
-# To execute from root: python3 -m models.auto_transmission
+
+# To execute from root: python3 -m models.auto_transmission1
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
+    slen = 24
     tdelta = 0.5
-    throttles = [0.3]*24
-    thetas = [0.]*15 + [0.5]*9
-    at = AutoTransmission(throttles, thetas, tdelta)
-    at.run()
-    print(at.gears)
+    throttles = [0.5]*slen
+    thetas = [0.]*slen
+
+    gears = [1]
+    for _ in range(1, slen):
+        if gears[-1] == 1:
+            gears.append(np.random.choice([1, 2]))
+        elif gears[-1] == 4:
+            gears.append(np.random.choice([3, 4]))
+        else:
+            gears.append(gears[-1] + np.random.randint(-1, 2))
+
+    at = AutoTransmission1(throttles, thetas, tdelta, gears=gears)
     at.plot()
+    print(at.gears)
     plt.show()
     #plt.savefig(f'demo/auto_transmission1.png')
     

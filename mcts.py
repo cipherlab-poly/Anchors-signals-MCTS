@@ -31,11 +31,11 @@ class MCTS:
         self.Q = defaultdict(int)
         self.N = defaultdict(int)
 
-    def choose(self, node):
+    def choose(self, node, nb=1):
         "Choose the best successor of node. (Choose a move in the game)"
         best = heapq.nlargest(5, self.children[node], key=self._score)
-        #worst = heapq.nsmallest(5, self.children[node], key=self._score)
-        return best #+ worst
+        worst = heapq.nsmallest(5, self.children[node], key=self._score)
+        return best + worst[::-1]
 
     def train(self, node):
         "Rollout the tree from `node` until error is smaller than `epsilon`"
