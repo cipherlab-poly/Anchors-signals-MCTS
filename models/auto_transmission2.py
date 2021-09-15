@@ -27,23 +27,27 @@ class AutoTransmission2(Simulator):
         self.thetas = thetas        # Road slope (rad): [0, pi/2]
         self.tdelta = tdelta        # Time step
         self.vspd = 0               # Vehicle speed (km/h)
-        self.espd = 1000            # Engine speed (rpm)
-        self.gear = 0               # Gear: 0, 1, 2, 3, 4
-        self.gears = []
+        self.espd = 0               # Engine speed (rpm)
+        self.gear = 1               # Gear: 1, 2, 3, 4
         self.params = params
         self.clock = 0
         self.shifts = { 
             '2-1': (0.5, 0.9, 5, 30), '1-2': (0.25, 0.9, 10, 40),
-            '3-2': (0.05, 0.9, 20, 50), '2-3': (0.35, 0.9, 30, 70),
-            '4-3': (0.05, 0.9, 35, 80), '3-4': (0.35, 0.9, 50, 100)
+            '3-2': (0.05, 0.9, 20, 50), '2-3': (0.1875, 0.9, 30, 80),
+            '4-3': (0.35, 0.9, 40, 80), '3-4': (0.35, 0.9, 50, 100)
         }
+
+        self.espds = []
+        self.vspds = []
+        self.gears = []
 
     def shift_gear(self):
         """Inspired from:
             https://www.mathworks.com/help/simulink/slref/modeling-an-automatic-transmission-controller.html
         """
+        throttle = self.throttles[self.clock]
+        
         def speed(shift):
-            throttle = self.throttles[self.clock]
             x1, x2, y1, y2 = self.shifts[shift]
             if throttle <= x1:
                 return y1 * 1.61
@@ -63,9 +67,15 @@ class AutoTransmission2(Simulator):
             elif shift == '3-2':
                 self.gear = 2
             elif shift == '2-3':
-                self.gear = min([2, 3], key=nearest_gear)
+                if throttle > 0.35:
+                    self.gear = 2
+                else:
+                    self.gear = min([2, 3], key=nearest_gear)
             elif shift == '4-3':
-                self.gear = 3
+                if throttle > 0.35:
+                    self.gear = 2
+                else:
+                    self.gear = 3
             elif shift == '3-4':
                 self.gear = min([3, 4], key=nearest_gear)
         elif speed(shift) <= self.vspd:
@@ -78,7 +88,10 @@ class AutoTransmission2(Simulator):
             elif shift == '2-3':
                 self.gear = 3
             elif shift == '4-3':
-                self.gear = min([3, 4], key=nearest_gear)
+                if throttle > 0.35:
+                    self.gear = min([2, 4], key=nearest_gear)
+                else:
+                    self.gear = min([3, 4], key=nearest_gear)
             elif shift == '3-4':
                 self.gear = 4
 
@@ -109,7 +122,7 @@ class AutoTransmission2(Simulator):
         omega = ratio * self.vspd / 3.6
         torque = max(Tm * (1 - beta * (omega / omega_m - 1)**2), 0)
         F = ratio * torque * throttle
-        self.espd = max(omega * 9.55, 500.0)
+        self.espd = omega * 6.65
 
         # Gravity due to the road slope.
         Fg = m * g * np.sin(theta)
@@ -124,82 +137,61 @@ class AutoTransmission2(Simulator):
         #   A:   the frontal area of the car
         Fa = 0.5 * rho * Cd * A * abs(self.vspd) * self.vspd / 12.96
         
-        # Total force
         Fd = Fg + Fr + Fa
-        
-        # Final acceleration on the car
         dv = (F - Fd) / m
         
         self.vspd += dv * self.tdelta
-        self.vspd = max(self.vspd, 0)
-        self.shift_gear()
+
+        self.espds.append(self.espd)
+        self.vspds.append(self.vspd)
         self.gears.append(self.gear)
+
+        self.shift_gear()
         self.clock += 1
 
-    def run(self):
+    def run(self, nb=4):
         for _ in range(self.slen):
             self.update()
-        
-    def simulate(self, stl, nb=5):
+        return np.vstack([self.vspds, self.throttles, self.gears])[:, -nb:]
+
+    def simulate(self, stl):
         sample = None
         while not stl.satisfy(sample):
-            new_throttles = np.random.randint(1, 6, nb) * 0.1
-            new_thetas = np.random.randint(0, 8, nb) * 0.1
-            throttles = np.hstack([self.throttles[:-nb], new_throttles])
-            thetas = np.hstack([self.thetas[:-nb], new_thetas])
-            at = AutoTransmission2(throttles, thetas, self.tdelta)
-            in3rd = False
-            for t in range(self.slen):
-                at.update()
-                if at.gear == 3:
-                    in3rd = True
-                if in3rd and at.gear != 3:
-                    break
-            if not in3rd:
-                sample = None
-            else:
-                sample = np.vstack([new_throttles, new_thetas])
+            throttles = list(np.random.random(self.slen))
+            at = AutoTransmission2(throttles, self.thetas, self.tdelta)
+            sample = at.run()
         return int(at.gear == 2)
 
     def plot(self):
         ts = []
-        espds = []
-        vspds = []
-    
         for t in range(self.slen):
-            ts.append(t * self.tdelta)
-            vspds.append(self.vspd)
-            espds.append(self.espd)
             self.update()
+            ts.append(t * self.tdelta)
         
         fig, axs = plt.subplots(2)
-        axs[0].plot(ts, espds, color='b')
-        axs[0].set_xlabel('time (s)')
+        axs[0].plot(ts, self.espds, color='b')
         axs[0].set_ylabel('engine speed (rpm)', color='b')
-        axs[1].plot(ts, vspds, color='b')
+        axs[1].plot(ts, self.vspds, color='b')
         axs[1].set_xlabel('time (s)')
         axs[1].set_ylabel('vehicle speed (km/h)', color='b')
         ax2 = axs[0].twinx()  # a second axe that shares the same x-axis
         ax2.set_ylabel('gear', color='r')
-        ax2.step(ts, self.gears, 'r-', where='post')
+        ax2.step(ts, self.gears[1:] + [self.gear], 'r-', where='post')
         plt.yticks(range(5))
         ax3 = axs[1].twinx()  # a second axe that shares the same x-axis
-        ax3.set_ylabel('gear', color='r')
-        ax3.step(ts, self.gears, 'r-', where='post')
-        plt.yticks(range(5))
-        for ax in axs.flat:
-            ax.label_outer()
+        ax3.set_ylabel('throttle', color='r')
+        ax3.plot(ts, self.throttles, 'r-')
 
 
 # To execute from root: python3 -m models.auto_transmission2
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
+    duration = 12
     tdelta = 0.5
-    throttles = [0.3]*23
-    thetas = [0.]*15 + [0.5]*8
+    throttles = list(np.linspace(0.6, 0.4, int(duration/tdelta)))
+    throttles += [1.0]
+    thetas = [0.]*len(throttles)
+
     at = AutoTransmission2(throttles, thetas, tdelta)
     at.plot()
-    print(at.gears)
     plt.show()
-    #plt.savefig(f'demo/auto_transmission2.png')
-    

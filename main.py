@@ -23,62 +23,56 @@ def simulate_thermostat(params) -> Simulator:
     params['y']     = tm.on
     return tm
 
-def simulate_acas_xu1(params) -> Simulator:
-    from models.acas_xu1 import ACAS_XU1
+def simulate_acas_xu(params) -> Simulator:
+    from models.acas_xu import ACAS_XU
 
     state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
-    acasxu = ACAS_XU1(state0, tdelta=1.0, slen=20)
-    acasxu.run()
-    params['s'] = acasxu.controls
-    params['range'] = [(1, list(range(5)))]
-    params['y'] = 'Distance remains > 3000 ft'
-    return acasxu
-
-def simulate_acas_xu2(params) -> Simulator:
-    from models.acas_xu2 import ACAS_XU2
-
-    state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
-    acasxu = ACAS_XU2(state0, tdelta=1.0, slen=10)
+    acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
     acasxu.load_nnets()
-    acasxu.run()
     smins = [0.0, 0.0, -np.pi]
     smaxes = [8000.0, np.pi, 0.0]
-    params['s'] = acasxu.sample
-    params['range'] = [(0, (smins[i], smaxes[i], 10)) for i in range(3)]
+    params['s'] = acasxu.run()
+    params['range'] = [(0, (smins[i], smaxes[i], 8)) for i in range(3)]
     params['y'] = acasxu.a_actual
-    params['epsilon'] = 0.02
+    params['tau'] = 0.98
+    params['epsilon'] = 0.015
     params['past'] = True
     return acasxu
 
-def simulate_at1(params) -> Simulator:
-    from models.auto_transmission1 import AutoTransmission1
+def simulate_auto_transmission(params) -> Simulator:
+    from models.auto_transmission import AutoTransmission
 
+    duration = 12
     tdelta = 0.5
-    throttles = [0.5]*24
-    thetas = [0.]*24
-    at = AutoTransmission1(throttles, thetas, tdelta)
-    at.run()
-    params['s'] = at.gears
-    params['range'] = [(1, list(range(1, 5)))]
-    params['epsilon'] = 0.01
-    params['y'] = 'Engine speed remains < 5000 rpm'
-    return at
-
-def simulate_at2(params) -> Simulator:
-    from models.auto_transmission2 import AutoTransmission2
-
-    tdelta = 0.5
-    throttles = [0.3]*23
-    thetas = [0.]*15 + [0.5]*8
-    at = AutoTransmission2(throttles, thetas, tdelta)
-    at.run()
-    params['s'] = np.array([throttles, thetas])[:, -5:]
-    params['range'] = [(0, (0, 0.5, 5)), (0, (0, 0.7, 7))]
-    params['epsilon'] = 0.02
-    params['y'] = 'Gear changed from 3 to 2'
+    throttles = list(np.linspace(0.6, 0.4, int(duration/tdelta)))
+    throttles += [1.0]
+    thetas = [0.] * len(throttles)
+    at = AutoTransmission(throttles, thetas, tdelta)
+    params['s'] = at.run()
+    params['range'] = [(0, (0, 200, 8)), (0, (0, 1, 10)), (1, [1, 2, 3, 4])]
+    params['epsilon'] = 0.015
+    params['tau'] = 0.98
+    params['y'] = at.gear
     params['past'] = True
     return at
-    
+
+def simulate_auto_transmission2(params) -> Simulator:
+    from models.auto_transmission2 import AutoTransmission2
+
+    duration = 12
+    tdelta = 0.5
+    throttles = list(np.linspace(0.6, 0.4, int(duration/tdelta)))
+    throttles += [1.0]
+    thetas = [0.] * len(throttles)
+    at = AutoTransmission2(throttles, thetas, tdelta)
+    params['s'] = at.run()
+    params['range'] = [(0, (0, 200, 20)), (0, (0, 1, 10)), (1, [1, 2, 3, 4])]
+    params['epsilon'] = 0.015
+    params['tau'] = 0.98
+    params['y'] = at.gear
+    params['past'] = True
+    return at
+
 """
 Should be defined in params
 ---------------------------
@@ -108,10 +102,9 @@ epsilon: float
 
 def main(params={}):
     #simulator = simulate_thermostat(params)
-    #simulator = simulate_acas_xu1(params)
-    #simulator = simulate_acas_xu2(params)
-    #simulator = simulate_at1(params)
-    simulator = simulate_at2(params)
+    #simulator = simulate_acas_xu(params)
+    #simulator = simulate_auto_transmission(params)
+    simulator = simulate_auto_transmission2(params)
 
     if not {'s', 'range'}.issubset(params.keys()):
         logging.error('something undefined in params among {s, range}')
@@ -122,7 +115,7 @@ def main(params={}):
     batch_size  = params.get('batch_size',  16  )
     tau         = params.get('tau',         0.95)
     rho         = params.get('rho',         0.01)
-    max_depth   = params.get('max_depth',   5   )
+    max_depth   = params.get('max_depth',   6   )
     delta       = params.get('delta',       0.01)
     epsilon     = params.get('epsilon',     0.01)
     past        = params.get('past',        False)
@@ -146,7 +139,10 @@ def main(params={}):
             stls = tree.choose(stl, nb=5)
             for stl in stls:
                 q, n = tree.Q[stl], tree.N[stl]
-                logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')
+                if not n:
+                    logging.info(f'{stl} ({q}/{n})')
+                else:
+                    logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')
             stl = stls[0]
             if tree.Q[stl]/tree.N[stl] > tau or len(stl) >= max_depth:
                 break

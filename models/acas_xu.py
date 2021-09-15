@@ -6,7 +6,7 @@ import logging
 from stl import Simulator
 
 "Explain why acas-xu changed from Strong Right turn to Weak Right turn"
-class ACAS_XU2(Simulator):
+class ACAS_XU(Simulator):
     __nnets = {}
     
     """
@@ -42,13 +42,12 @@ class ACAS_XU2(Simulator):
         self.a_prev = 0
         self.a_actual = 0
         self.sample = np.zeros((3, 0))
-        self.controls = []
 
     def load_nnets(self):
         for a_prev in range(5):
             filename = dirname(abspath(__file__)) + '/acasxu/ACASXU'
             filename += f'_experimental_v2a_{a_prev+1}_1.nnet'
-            ACAS_XU2.__nnets[a_prev] = NNet(filename)
+            ACAS_XU.__nnets[a_prev] = NNet(filename)
     
     def get_rho(self):
         rho = np.sqrt(self.x_own[0]**2 + self.x_own[1]**2)
@@ -104,13 +103,13 @@ class ACAS_XU2(Simulator):
         self.x_int += self.v_int * self.tdelta
         data = self.get_inputs()[:3]
         self.sample = np.hstack((self.sample, data.reshape((3, -1))))
-        self.controls.append(self.a_actual)
         if log:
             self.log_state()
 
-    def run(self):
+    def run(self, nb=4):
         for _ in range(self.slen):
             self.update()
+        return self.sample[:, -nb:]
     
     def simulate(self, stl):
         sample = None
@@ -119,15 +118,11 @@ class ACAS_XU2(Simulator):
             uniform = np.random.uniform(-1, 1, 3)
             random[0] = uniform[0] * 3000
             random[1:3] = uniform[1:3] * np.pi/2
-            acasxu = ACAS_XU2(self.state0 + random, self.tdelta, self.slen)
-            for t in range(self.slen):
-                acasxu.update()
-                if acasxu.a_actual != 4:
-                    break
-            sample = None if t == 0 else acasxu.sample
+            acasxu = ACAS_XU(self.state0 + random, self.tdelta, self.slen)
+            sample = acasxu.run()
         return int(acasxu.a_actual == 2)
 
-# To execute from root: python3 -m models.acas_xu2
+# To execute from root: python3 -m models.acas_xu
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, 
         format='%(asctime)s %(levelname)-5s %(message)s',
@@ -135,14 +130,10 @@ if __name__ == '__main__':
 
     state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
     random = np.random.uniform(-1, 1, 5)
-    random[0] *= 3000
+    random[0] = 2000#*= 3000
     random[1:3] *= np.pi/4
     random[3:] *= 0
-    acasxu = ACAS_XU2(state0 + random, tdelta=1.0, slen=10)
+    acasxu = ACAS_XU(state0 + random, tdelta=1.0, slen=10)
     acasxu.load_nnets()
-    for t in range(10):
-        acasxu.update()
-        if acasxu.a_actual != 4:
-            break
-    logging.info(acasxu.sample)
-    logging.info(acasxu.controls)
+    sample = acasxu.run()
+    logging.info(sample)
