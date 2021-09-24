@@ -31,11 +31,25 @@ class MCTS:
         self.Q = defaultdict(int)
         self.N = defaultdict(int)
 
-    def choose(self, node, nb=1):
+    def choose(self, node, ce=2, nb=3):
         "Choose the best successor of node. (Choose a move in the game)"
-        best = heapq.nlargest(5, self.children[node], key=self._score)
-        worst = heapq.nsmallest(5, self.children[node], key=self._score)
-        return best + worst[::-1]
+        def uct(n):
+            mu, N = self._score(n)
+            if not N:
+                return float('inf')
+            tmp = math.sqrt(ce * math.log(N) / N)
+            return mu - tmp
+
+        def ucb1tuned(n):
+            mu, N = self._score(n)
+            if not N:
+                return float('inf')
+            tmp = math.sqrt(ce * math.log(N) / N)
+            return mu - tmp * math.sqrt(min(0.25, mu * (1 - mu) + tmp))
+        
+        best = heapq.nlargest(nb, self.children[node], key=eval(self.method))
+        #worst = heapq.nsmallest(nb, self.children[node], key=self._score)
+        return best #+ worst[::-1]
 
     def train(self, node):
         "Rollout the tree from `node` until error is smaller than `epsilon`"
@@ -108,21 +122,18 @@ class MCTS:
 
     def _select(self, node, ce=2):
         "Select a child of node, balancing exploration & exploitation"
-
-        log_N_vertex = math.log(self.N[node])
-
         def uct(n):
             mu, N = self._score(n)
             if not N:
                 return float('inf')
-            tmp = math.sqrt(ce * log_N_vertex / N)
+            tmp = math.sqrt(ce * math.log(N) / N)
             return mu + tmp
 
         def ucb1tuned(n):
             mu, N = self._score(n)
             if not N:
                 return float('inf')
-            tmp = math.sqrt(ce * log_N_vertex / N)
+            tmp = math.sqrt(ce * math.log(N) / N)
             return mu + tmp * math.sqrt(min(0.25, mu * (1 - mu) + tmp))
 
         return max(self.children[node], key=eval(self.method))

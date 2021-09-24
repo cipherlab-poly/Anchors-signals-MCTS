@@ -3,6 +3,7 @@ np.set_printoptions(precision=2, suppress=True)
 np.random.seed(42)
 
 from mcts import MCTS
+from kl_lucb import KL_LUCB
 from stl import STL, PrimitiveGenerator, Simulator
 
 import logging
@@ -12,15 +13,11 @@ logging.basicConfig(level=logging.INFO,
 
 def simulate_thermostat(params) -> Simulator:
     from models.thermostat import Thermostat
-
-    slen = 5
-    tm = Thermostat(out_temp=19, exp_temp=20, latency=2, length=slen)
-    tm.temps = [19.53, 19.33, 19.83, 20.08, 19.37]
-    tm.on = 0
-
-    params['s']     = np.array([tm.temps])
+    
+    tm = Thermostat(out_temp=19, exp_temp=20, latency=2, length=5)
+    params['s']     = np.array([[19.53, 19.33, 19.83, 20.08, 19.37]])
     params['range'] = [(0, (19, 21, 20))]
-    params['y']     = tm.on
+    params['y']     = 0
     return tm
 
 def simulate_acas_xu(params) -> Simulator:
@@ -101,10 +98,13 @@ epsilon: float
 """
 
 def main(params={}):
-    #simulator = simulate_thermostat(params)
+    simulator = simulate_thermostat(params)
     #simulator = simulate_acas_xu(params)
     #simulator = simulate_auto_transmission(params)
-    simulator = simulate_auto_transmission2(params)
+    #simulator = simulate_auto_transmission2(params)
+
+    #method = 'MCTS'
+    method = 'KL-LUCB'
 
     if not {'s', 'range'}.issubset(params.keys()):
         logging.error('something undefined in params among {s, range}')
@@ -115,39 +115,61 @@ def main(params={}):
     batch_size  = params.get('batch_size',  16  )
     tau         = params.get('tau',         0.95)
     rho         = params.get('rho',         0.01)
-    max_depth   = params.get('max_depth',   6   )
     delta       = params.get('delta',       0.01)
     epsilon     = params.get('epsilon',     0.01)
     past        = params.get('past',        False)
-    
+
     logging.info(f'Signal and output to explain:\n{s} => {y}')
-    tree = MCTS(batch_size=batch_size, max_depth=max_depth, 
-                delta=delta, epsilon=epsilon)
     stl = STL()
     primitives = PrimitiveGenerator(s, srange, rho, past).generate()
     logging.info('Initializing primitives...')
     nb = stl.init(primitives, simulator)
     logging.info(f'Done. {nb} primitives.')
-    
-    while True:
-        logging.info('Choosing best primitive...')
-        try:
-            tree.train(stl)
-        except KeyboardInterrupt:
-            logging.warning('Interrupted')
-        finally:
-            stls = tree.choose(stl, nb=5)
-            for stl in stls:
-                q, n = tree.Q[stl], tree.N[stl]
-                if not n:
-                    logging.info(f'{stl} ({q}/{n})')
-                else:
-                    logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')
-            stl = stls[0]
-            if tree.Q[stl]/tree.N[stl] > tau or len(stl) >= max_depth:
-                break
 
-    #tree.visualize()
+    if method == 'MCTS':
+        max_depth   = params.get('max_depth', 5)
+        tree = MCTS(batch_size=batch_size, max_depth=max_depth, 
+                    delta=delta, epsilon=epsilon)
+        while True:
+            logging.info('Choosing best primitive...')
+            try:
+                tree.train(stl)
+            except KeyboardInterrupt:
+                logging.warning('Interrupted')
+            finally:
+                stls = tree.choose(stl, nb=5)
+                for stl in stls:
+                    q, n = tree.Q[stl], tree.N[stl]
+                    if not n:
+                        logging.info(f'{stl} ({q}/{n})')
+                    else:
+                        logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')
+                stl = stls[0]
+                if tree.Q[stl] / tree.N[stl] > tau or len(stl) >= max_depth:
+                    return
+    else:
+        beam_width = params.get('beam_width', 1)
+        tree = KL_LUCB(batch_size=batch_size, beam_width=beam_width, 
+                        delta=delta, epsilon=epsilon)
+        cands = {stl}
+        while True:
+            logging.info('Choosing best primitive...')
+            cands = tree.get_cands(cands)
+            try:
+                tree.train(cands)
+            except KeyboardInterrupt:
+                logging.warning('Interrupted')
+            finally:
+                stls = tree.choose(cands)
+                for stl in stls:
+                    q, n = tree.Q[stl], tree.N[stl]
+                    lb, ub = tree.LB[stl], tree.UB[stl]
+                    logging.info(f'{stl} [{lb:5.2%}, {q}/{n}={q/n:5.2%}, {ub:5.2%}]')
+                stl = stls[0]
+                if tree.Q[stl] / tree.N[stl] > tau or len(stl) >= max_depth:
+                    return
+                else:
+                    cands = stls
 
 if __name__ == '__main__':
     main()

@@ -35,15 +35,15 @@ class Thermostat(Simulator):
                     on = 0
         return on
     
-    def simulate(self, stl, expected_output):
+    def simulate(self, stl):
         sample = None
         while not stl.satisfy(sample):
             tm = Thermostat(self.out_temp, self.exp_temp, self.latency, self.length)
             tm.run()
             sample = np.array([tm.temps])
-        return int(tm.on == expected_output)
+        return int(tm.on == 0)
         
-    def plot(self, save=False):
+    def plot(self):
         import matplotlib.pyplot as plt
         t = range(len(self.temps))
         fig, ax1 = plt.subplots()
@@ -55,7 +55,5 @@ class Thermostat(Simulator):
         ax2.set_ylabel('activation')
         ax2.step(t, self.ons, 'r-', where='post')
         plt.yticks([0, 1])
-        if save:
-            plt.savefig('demo/thermostat.png')
         plt.show()
     
