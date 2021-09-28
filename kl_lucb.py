@@ -39,10 +39,10 @@ class KL_LUCB:
         self.UB = defaultdict(lambda: 1.0)
         self.LB = defaultdict(lambda: 0.0)
 
-    def choose(self, nodes, nb=5):
-        def prec(n):
+    def choose(self, nodes):
+        def precision(n):
             return self.Q[n] / self.N[n]
-        return heapq.nlargest(nb, nodes, key=prec)
+        return heapq.nlargest(self.beam_width, nodes, key=precision)
 
     def get_cands(self, beams):
         cands = set()

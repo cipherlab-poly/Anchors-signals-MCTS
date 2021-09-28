@@ -3,7 +3,7 @@ from joblib import load
 import os.path
 from stl import Simulator
 
-class AutoTransmission2(Simulator):
+class AutoTransmission3(Simulator):
     def __init__(self, throttles, thetas, tdelta, params={}):
         """
         Parameters
@@ -26,15 +26,15 @@ class AutoTransmission2(Simulator):
         self.throttles = throttles  # Throttle: [0, 1]
         self.thetas = thetas        # Road slope (rad): [0, pi/2]
         self.tdelta = tdelta        # Time step
-        self.vspd = 0               # Vehicle speed (km/h)
+        self.vspd = 0               # Vehicle speed (m/s)
         self.espd = 0               # Engine speed (rpm)
         self.gear = 1               # Gear: 1, 2, 3, 4
         self.params = params
         self.clock = 0
         self.shifts = { 
             '2-1': (0.5, 0.9, 5, 30), '1-2': (0.25, 0.9, 10, 40),
-            '3-2': (0.05, 0.9, 20, 50), '2-3': (0.1875, 0.9, 30, 80),
-            '4-3': (0.35, 0.9, 40, 80), '3-4': (0.35, 0.9, 50, 100)
+            '3-2': (0.05, 0.9, 20, 50), '2-3': (0.35, 0.9, 30, 70),
+            '4-3': (0.05, 0.9, 35, 80), '3-4': (0.35, 0.9, 50, 100)
         }
 
         self.espds = []
@@ -45,15 +45,14 @@ class AutoTransmission2(Simulator):
         """Inspired from:
             https://www.mathworks.com/help/simulink/slref/modeling-an-automatic-transmission-controller.html
         """
-        throttle = self.throttles[self.clock]
-        
         def speed(shift):
+            throttle = self.throttles[self.clock]
             x1, x2, y1, y2 = self.shifts[shift]
             if throttle <= x1:
                 return y1 / 2.237
             if throttle >= x2:
                 return y2 / 2.237
-            return (y1 + (y2 - y1)/(x2 - x1) * (throttle - x1)) / 2.237
+            return (y1 + (y2 - y1) / (x2 - x1) * (throttle - x1)) / 2.237
 
         def nearest_gear(x):
             return abs(x - self.gear)
@@ -67,15 +66,9 @@ class AutoTransmission2(Simulator):
             elif shift == '3-2':
                 self.gear = 2
             elif shift == '2-3':
-                if throttle > 0.35:
-                    self.gear = 2
-                else:
-                    self.gear = min([2, 3], key=nearest_gear)
+                self.gear = min([2, 3], key=nearest_gear)
             elif shift == '4-3':
-                if throttle > 0.35:
-                    self.gear = 2
-                else:
-                    self.gear = 3
+                self.gear = 3
             elif shift == '3-4':
                 self.gear = min([3, 4], key=nearest_gear)
         elif speed(shift) <= self.vspd:
@@ -88,10 +81,7 @@ class AutoTransmission2(Simulator):
             elif shift == '2-3':
                 self.gear = 3
             elif shift == '4-3':
-                if throttle > 0.35:
-                    self.gear = min([2, 4], key=nearest_gear)
-                else:
-                    self.gear = min([3, 4], key=nearest_gear)
+                self.gear = min([3, 4], key=nearest_gear)
             elif shift == '3-4':
                 self.gear = 4
 
@@ -148,18 +138,18 @@ class AutoTransmission2(Simulator):
         self.shift_gear()
         self.clock += 1
 
-    def run(self, nb=4):
+    def run(self, nb=5):
         for _ in range(self.slen):
             self.update()
-        return np.vstack([self.vspds, self.throttles, self.gears])[:, -nb:]
+        return np.vstack([self.espds, self.vspds])
 
     def simulate(self, stl):
         sample = None
         while not stl.satisfy(sample):
             throttles = list(np.random.random(self.slen))
-            at = AutoTransmission2(throttles, self.thetas, self.tdelta)
+            at = AutoTransmission3(throttles, self.thetas, self.tdelta)
             sample = at.run()
-        return int(at.gear == 2)
+        return int(any(espd >= 4750 for espd in at.espds[:int(10/self.tdelta)+1]))
 
     def plot(self):
         ts = []
@@ -173,6 +163,7 @@ class AutoTransmission2(Simulator):
         axs[0].set_yticks(np.arange(0, 1.2, 0.2))
         axs[0].set_xticklabels([])
         axs[1].plot(ts, self.espds, color='b')
+        axs[1].plot(ts, [4750]*len(ts), color='r')
         axs[1].set_ylabel('engine (rpm)', color='b')
         axs[1].set_yticks(np.arange(0, 6000, 1000))
         axs[1].set_xticklabels([])
@@ -185,15 +176,17 @@ class AutoTransmission2(Simulator):
             axs[i].grid()
 
 
-# To execute from root: python3 -m models.auto_transmission2
+# To execute from root: python3 -m models.auto_transmission3
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-    duration = 12
-    tdelta = 0.5
-    throttles = list(np.linspace(0.6, 0.4, int(duration/tdelta)))
-    throttles += [1.0]
+    tdelta = 1.0
+    throttles = ([0.55]*5 + [0.95]*5) * 2 + [0.9]
+    #throttles = list(np.linspace(0.6, 0.4, 150))
+    #throttles += list(np.linspace(1.0, 0.8, 150))
     thetas = [0.]*len(throttles)
 
-    at = AutoTransmission2(throttles, thetas, tdelta)
+    at = AutoTransmission3(throttles, thetas, tdelta)
     at.plot()
     plt.show()
+    #plt.savefig(f'demo/auto_transmission3.png')
+    

@@ -49,10 +49,10 @@ class AutoTransmission(Simulator):
             throttle = self.throttles[self.clock]
             x1, x2, y1, y2 = self.shifts[shift]
             if throttle <= x1:
-                return y1 * 1.61
+                return y1 / 2.237
             if throttle >= x2:
-                return y2 * 1.61
-            return (y1 + (y2 - y1)/(x2 - x1) * (throttle - x1)) * 1.61
+                return y2 / 2.237
+            return (y1 + (y2 - y1)/(x2 - x1) * (throttle - x1)) / 2.237
 
         def nearest_gear(x):
             return abs(x - self.gear)
@@ -102,14 +102,14 @@ class AutoTransmission(Simulator):
         A = self.params.get('A', 2.4)
         alpha = self.params.get(
             'alpha', [40, 25, 16, 12])              # gear ratio / wheel radius
-        Tm = self.params.get('Tm', 1400.)           # engine torque constant
+        Tm = self.params.get('Tm', 350.)            # engine torque constant
         omega_m = self.params.get('omega_m', 420.)  # peak engine angular speed
         beta = self.params.get('beta', 0.4)         # peak engine rolloff
 
         throttle = self.throttles[self.clock]
         theta = self.thetas[self.clock]
         ratio = alpha[max(self.gear - 1, 0)]
-        omega = ratio * self.vspd / 3.6
+        omega = ratio * self.vspd
         torque = max(Tm * (1 - beta * (omega / omega_m - 1)**2), 0)
         F = ratio * torque * throttle
         self.espd = omega * 6.65
@@ -125,17 +125,16 @@ class AutoTransmission(Simulator):
         #   rho: density of air
         #   Cd:  shape-dependent aerodynamic drag coefficient
         #   A:   the frontal area of the car
-        Fa = 0.5 * rho * Cd * A * abs(self.vspd) * self.vspd / 12.96
+        Fa = 0.5 * rho * Cd * A * abs(self.vspd) * self.vspd
         
         Fd = Fg + Fr + Fa
         dv = (F - Fd) / m
         
-        self.vspd += dv * self.tdelta
-        
         self.espds.append(self.espd)
-        self.vspds.append(self.vspd)
+        self.vspds.append(self.vspd * 2.237)
         self.gears.append(self.gear)
         
+        self.vspd += dv * self.tdelta
         self.shift_gear()
         self.clock += 1
 
@@ -158,19 +157,22 @@ class AutoTransmission(Simulator):
             self.update()
             ts.append(t * self.tdelta)
         
-        fig, axs = plt.subplots(2)
-        axs[0].plot(ts, self.espds, color='b')
-        axs[0].set_ylabel('engine speed (rpm)', color='b')
-        axs[1].plot(ts, self.vspds, color='b')
-        axs[1].set_xlabel('time (s)')
-        axs[1].set_ylabel('vehicle speed (km/h)', color='b')
-        ax2 = axs[0].twinx()  # a second axe that shares the same x-axis
-        ax2.set_ylabel('gear', color='r')
-        ax2.step(ts, self.gears[1:] + [self.gear], 'r-', where='post')
-        plt.yticks(range(5))
-        ax3 = axs[1].twinx()  # a second axe that shares the same x-axis
-        ax3.set_ylabel('throttle', color='r')
-        ax3.plot(ts, self.throttles, 'r-')
+        fig, axs = plt.subplots(3)
+        axs[0].plot(ts, self.throttles, color='b')
+        axs[0].set_ylabel('throttle', color='b')
+        axs[0].set_yticks(np.arange(0, 1.2, 0.2))
+        axs[0].set_xticklabels([])
+        axs[1].plot(ts, self.espds, color='b')
+        axs[1].set_ylabel('engine (rpm)', color='b')
+        axs[1].set_yticks(np.arange(0, 6000, 1000))
+        axs[1].set_xticklabels([])
+        axs[2].plot(ts, self.vspds, color='b')
+        axs[2].set_xlabel('time (s)')
+        axs[2].set_ylabel('speed (mph)', color='b')
+        axs[2].yaxis.set_ticks(np.arange(0, 150, 30))
+        for i in range(3):
+            axs[i].margins(x=0)
+            axs[i].grid()
 
 
 # To execute from root: python3 -m models.auto_transmission

@@ -7,19 +7,14 @@ Inspired from:
 from collections import defaultdict
 import math
 import itertools
-import heapq
 
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
-    def __init__(self, batch_size=256, max_depth=5, delta=0.01, epsilon=0.01,
-                    method='ucb1tuned', ancestors=True):
-        
+    def __init__(self, batch_size=256, max_depth=5, epsilon=0.01, ancestors=True):
         self.batch_size = batch_size
         self.max_depth  = max_depth
-        self.delta      = delta
         self.epsilon    = epsilon
-        self.method     = method        # uct / ucb1tuned
         
         self.children = defaultdict(set)
         if ancestors:
@@ -30,26 +25,21 @@ class MCTS:
         # Monte-Carlo (score of a node)
         self.Q = defaultdict(int)
         self.N = defaultdict(int)
+        
+        # Hyperparameter for ucb1tuned
+        self.ce = 2
 
-    def choose(self, node, ce=2, nb=3):
+    def choose(self, node):
         "Choose the best successor of node. (Choose a move in the game)"
-        def uct(n):
-            mu, N = self._score(n)
-            if not N:
-                return float('inf')
-            tmp = math.sqrt(ce * math.log(N) / N)
-            return mu - tmp
-
+        
         def ucb1tuned(n):
             mu, N = self._score(n)
             if not N:
-                return float('inf')
-            tmp = math.sqrt(ce * math.log(N) / N)
+                return float('-inf')
+            tmp = math.sqrt(self.ce* math.log(self.N[node]) / N)
             return mu - tmp * math.sqrt(min(0.25, mu * (1 - mu) + tmp))
         
-        best = heapq.nlargest(nb, self.children[node], key=eval(self.method))
-        #worst = heapq.nsmallest(nb, self.children[node], key=self._score)
-        return best #+ worst[::-1]
+        return max(self.children[node], key=ucb1tuned)
 
     def train(self, node):
         "Rollout the tree from `node` until error is smaller than `epsilon`"
@@ -57,16 +47,16 @@ class MCTS:
         i = 0
         while err > self.epsilon:
             i += 1
-            print(f'\033[1;93m Iter {i} Error {err:5.2%}\033[1;m', end='  \r')
+            print(f'\033[1;93m Iter {i} Error {err:5.2%} \033[1;m', end='   \r')
             self._rollout(node)
-            
-            # Hoeffding's bound
+
             if self.children[node]:
-                best = self._select(node)
-                if self.N[best]:
-                    div = math.sqrt(-math.log(self.delta/2) / (2*self.N[best]))
-                    err = min(div, err)
-        print()
+                best = self.choose(node)
+                mu, N = self._score(best)
+                if N:
+                    tmp = math.sqrt(self.ce * math.log(self.N[node]) / N)
+                    err = 2 * tmp * math.sqrt(min(0.25, mu * (1 - mu) + tmp))
+                    err = min(err, 1.0)
 
     def _rollout(self, node):
         "Make the tree one layer better (train for one iteration)"
@@ -120,23 +110,17 @@ class MCTS:
                 self.Q[n] += reward
                 self.N[n] += self.batch_size
 
-    def _select(self, node, ce=2):
+    def _select(self, node):
         "Select a child of node, balancing exploration & exploitation"
-        def uct(n):
-            mu, N = self._score(n)
-            if not N:
-                return float('inf')
-            tmp = math.sqrt(ce * math.log(N) / N)
-            return mu + tmp
-
+        
         def ucb1tuned(n):
             mu, N = self._score(n)
             if not N:
                 return float('inf')
-            tmp = math.sqrt(ce * math.log(N) / N)
+            tmp = math.sqrt(self.ce* math.log(self.N[node]) / N)
             return mu + tmp * math.sqrt(min(0.25, mu * (1 - mu) + tmp))
-
-        return max(self.children[node], key=eval(self.method))
+        
+        return max(self.children[node], key=ucb1tuned)
 
     def visualize(self):
         from visual import Visual
