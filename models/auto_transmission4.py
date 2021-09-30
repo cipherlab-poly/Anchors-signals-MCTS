@@ -146,10 +146,10 @@ class AutoTransmission4(Simulator):
     def simulate(self, stl):
         sample = None
         while not stl.satisfy(sample):
-            throttles = list(np.random.random(self.slen) / 2 + 0.5)
+            throttles = np.random.uniform(0.6, 1.0, self.slen)
             at = AutoTransmission4(throttles, self.thetas, self.tdelta)
             sample = at.run()
-        return int(any(vspd >= 120 for vspd in at.vspds[:int(20/self.tdelta)+1]))
+        return int(any(vspd >= 120 for vspd in at.vspds))
 
     def plot(self):
         ts = []
@@ -180,13 +180,14 @@ class AutoTransmission4(Simulator):
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     tdelta = 1.0
-    throttles = [0.9]*21
+    throttles = [0.95]*21
     #throttles = list(np.linspace(0.6, 0.4, 150))
     #throttles += list(np.linspace(1.0, 0.8, 150))
     thetas = [0.]*len(throttles)
 
     at = AutoTransmission4(throttles, thetas, tdelta)
     at.plot()
+    print(at.vspds)
     plt.show()
     #plt.savefig(f'demo/auto_transmission3.png')
     

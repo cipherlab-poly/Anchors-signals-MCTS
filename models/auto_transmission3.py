@@ -146,7 +146,7 @@ class AutoTransmission3(Simulator):
     def simulate(self, stl):
         sample = None
         while not stl.satisfy(sample):
-            throttles = list(np.random.random(self.slen))
+            throttles = np.random.uniform(-1, 1, self.slen) + np.array(self.throttles)
             at = AutoTransmission3(throttles, self.thetas, self.tdelta)
             sample = at.run()
         return int(any(espd >= 4750 for espd in at.espds[:int(10/self.tdelta)+1]))

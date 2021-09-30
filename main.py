@@ -77,8 +77,6 @@ def simulate_auto_transmission3(params) -> Simulator:
     params['s'] = at.run()
     params['range'] = [(0, (1000, 6000, 20)), (0, (0, 160, 8))]
     params['epsilon'] = 0.02
-    params['tau'] = 0.99
-    params['batch_size'] = 8
     return at
 
 def simulate_auto_transmission4(params) -> Simulator:
@@ -90,12 +88,8 @@ def simulate_auto_transmission4(params) -> Simulator:
 
     at = AutoTransmission4(throttles, thetas, tdelta)
     params['s'] = at.run()
-    params['range'] = [(0, (0, 6000, 6)), (0, (0, 140, 7))]
-    params['epsilon'] = 0.02
-    params['rho'] = 0.05
-    params['max_depth'] = 3
-    params['tau'] = 0.99
-    params['batch_size'] = 16
+    params['range'] = [(0, (0, 5000, 5)), (0, (60, 160, 5))]
+    params['epsilon'] = 0.03
     return at
 
 """
@@ -161,8 +155,8 @@ def main(params={}):
             logging.info('Choosing best primitive...')
             try:
                 tree.train(stl)
-            except KeyboardInterrupt:
-                logging.warning('Interrupted')
+            except Exception as e:
+                logging.error(e)
                 interrupted = True
             finally:
                 stl = tree.choose(stl)
@@ -184,8 +178,8 @@ def main(params={}):
             cands = tree.get_cands(cands)
             try:
                 tree.train(cands)
-            except KeyboardInterrupt:
-                logging.warning('Interrupted')
+            except Exception as e:
+                logging.error(e)
                 interrupted = True
             stls = tree.choose(cands)
             for stl in stls:
