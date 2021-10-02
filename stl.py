@@ -10,14 +10,14 @@ from typing import List, FrozenSet
 class Primitive:
     "Ex: Primitive('G', 0, 5, '>', 20) <=> G[0,5](s_i > 20)"
     
-    _typ: str            # 'F'(eventually) or 'G'(always)
-    _a: int              # lower bound delay
-    _b: int              # upper bound delay
-    _i: int              # component index
-    _comp: str           # '<' or '>' (continuous) or '=' (discrete)
-    _mu: float           # constant threshold
-    _normalize: float    # if continuous, max - min of mu
-                         # if discrete, 1 (to normalize robustness degree)
+    _typ: str               # 'F'(eventually) or 'G'(always)
+    _a: int                 # lower bound delay
+    _b: int                 # upper bound delay
+    _i: int                 # component index
+    _comp: str              # '<' or '>' (continuous) or '=' (discrete)
+    _mu: float              # constant threshold
+    _normalize: float       # if continuous, max - min of mu
+                            # if discrete, 1 (to normalize robustness degree)
     
     def __post_init__(self):
         if self._typ not in ['F', 'G']:
@@ -81,7 +81,7 @@ class Primitive:
                 return self._mu == parent._mu
         return False
 
-    def satisfy(self, s: np.ndarray) -> bool:
+    def satisfied(self, s: np.ndarray) -> bool:
         "Verify if satisfied by signal `s`"
         return self.robust(s) > 0
 
@@ -142,12 +142,12 @@ class PrimitiveGenerator:
                                 u = 0
                                 if phi1.robust(self._s) < self._rho:
                                     l = len(mus) - 1
-                                    from_beginning = True
+                                    from_begin = True
                                 else:
                                     stop = True
-                                    from_beginning = False
+                                    from_begin = False
                             else:
-                                from_beginning = False
+                                from_begin = False
                                 l = 0
                                 if phi1.robust(self._s) >= self._rho:
                                     u = len(mus) - 1
@@ -174,12 +174,9 @@ class PrimitiveGenerator:
                                     else:
                                         l = q
                             
-                            if from_beginning:
-                                for q in range(u+1):
-                                    result.append(Primitive(*r, mus[q], norm))
-                            else:
-                                for q in range(u, len(mus)):
-                                    result.append(Primitive(*r, mus[q], norm))
+                            rng = range(u+1) if from_begin else range(u, len(mus))
+                            for q in rng:
+                                result.append(Primitive(*r, mus[q], norm))
                                 
             # d-th component is discrete
             elif self._srange[d][0] == 1:
@@ -230,12 +227,12 @@ class STL(object):
             if STL.__primitives[child].is_child_of(STL.__primitives[parent])} 
             for child in range(nb)}
         return nb
-
-    def satisfy(self, s: np.ndarray) -> bool:
+    
+    def _satisfied(self, s: np.ndarray) -> bool:
         "Verify if STL is satisfied by signal `s`"
         if s is None:
             return False
-        return all(STL.__primitives[i].satisfy(s) for i in self._indices)
+        return all(STL.__primitives[i].satisfied(s) for i in self._indices)
     
     def get_children(self) -> Set[STL]:
         length = len(STL.__primitives)
@@ -249,7 +246,13 @@ class STL(object):
         return [STL.__primitives[i].get_params() for i in self._indices]
 
     def simulate(self, batch_size: int) -> int:
-        return sum(STL.__simulator.simulate(self) for _ in range(batch_size))
+        Q, N = 0, 0
+        for _ in range(batch_size):
+            sample, score = STL.__simulator.simulate()
+            if self._satisfied(sample):
+                Q += score 
+                N += 1
+        return Q, N
 
     def __len__(self):
         return len(self._indices)
@@ -267,6 +270,6 @@ from abc import ABC, abstractmethod
 
 class Simulator(ABC):
     @abstractmethod
-    def simulate(self, stl):
-        "Simulate a signal satisfied by `stl` and return the corresponding reward"
+    def simulate(self):
+        "Simulate a signal and return the corresponding reward"
         return 0

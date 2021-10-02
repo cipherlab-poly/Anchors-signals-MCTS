@@ -25,6 +25,7 @@ class Thermostat(Simulator):
             # on if in_temp below exp_temp for at least *latency*
             self.on = self._black_box(np.array([self.temps]))
             self.ons.append(self.on)
+        return np.array([self.temps])
     
     def _black_box(self, sample):
         "on if `in_temp` below `exp_temp` for at least `latency`"
@@ -35,13 +36,10 @@ class Thermostat(Simulator):
                     on = 0
         return on
     
-    def simulate(self, stl):
-        sample = None
-        while not stl.satisfy(sample):
-            tm = Thermostat(self.out_temp, self.exp_temp, self.latency, self.length)
-            tm.run()
-            sample = np.array([tm.temps])
-        return int(tm.on == 0)
+    def simulate(self):
+        tm = Thermostat(self.out_temp, self.exp_temp, self.latency, self.length)
+        sample = tm.run()
+        return sample, int(tm.on == 0)
         
     def plot(self):
         import matplotlib.pyplot as plt

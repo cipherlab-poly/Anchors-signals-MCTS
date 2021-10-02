@@ -1,6 +1,4 @@
 import numpy as np
-from joblib import load
-import os.path
 from stl import Simulator
 
 class AutoTransmission2(Simulator):

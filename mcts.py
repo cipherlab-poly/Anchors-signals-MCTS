@@ -11,10 +11,10 @@ import itertools
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
-    def __init__(self, batch_size=256, max_depth=5, epsilon=0.01, ancestors=True):
-        self.batch_size = batch_size
+    def __init__(self, max_depth=5, epsilon=0.01, tau=0.01, ancestors=True):
         self.max_depth  = max_depth
         self.epsilon    = epsilon
+        self.tau        = tau
         
         self.children = defaultdict(set)
         if ancestors:
@@ -22,13 +22,22 @@ class MCTS:
         else:
             self.ancestors = None
         
-        # Monte-Carlo (score of a node)
+        # Monte-Carlo (precision = Q/N)
         self.Q = defaultdict(int)
         self.N = defaultdict(int)
+
+        # Coverage = N/M
+        self.M = defaultdict(int)
         
         # Hyperparameter for ucb1tuned
         self.ce = 2
 
+        # To be increased after each move
+        self.batch_size = None
+
+    def set_batch_size(self, batch_size):
+        self.batch_size = batch_size
+    
     def choose(self, node):
         "Choose the best successor of node. (Choose a move in the game)"
         
@@ -39,7 +48,17 @@ class MCTS:
             tmp = math.sqrt(self.ce* math.log(self.N[node]) / N)
             return mu - tmp * math.sqrt(min(0.25, mu * (1 - mu) + tmp))
         
-        return max(self.children[node], key=ucb1tuned)
+        def coverage(n):
+            if not self.M[n]:
+                return (0.0, 0)
+            return (self.N[n] / self.M[n], self.N[n])
+        
+        if all(self._score(n)[0] < self.tau for n in self.children[node]):
+            return [max(self.children[node], key=ucb1tuned)]
+
+        bests = {child for child in self.children[node] 
+                    if self._score(child)[0] > self.tau}
+        return sorted(bests, key=coverage, reverse=True)
 
     def train(self, node):
         "Rollout the tree from `node` until error is smaller than `epsilon`"
@@ -51,7 +70,7 @@ class MCTS:
             self._rollout(node)
 
             if self.children[node]:
-                best = self.choose(node)
+                best = self.choose(node)[0]
                 mu, N = self._score(best)
                 if N:
                     tmp = math.sqrt(self.ce * math.log(self.N[node]) / N)
@@ -62,8 +81,8 @@ class MCTS:
         "Make the tree one layer better (train for one iteration)"
         path = self._select_path(node)
         leaf = path[-1]
-        reward = self._simulate(leaf)
-        self._backpropagate(path, reward)
+        Q, N = leaf.simulate(self.batch_size)
+        self._backpropagate(path, Q, N)
 
     def _score(self, node):
         "Empirical score of `node`"
@@ -91,24 +110,22 @@ class MCTS:
         if self.ancestors is not None:
             for child in self.children[node]:
                 self.ancestors[child].add(node)
-
-    def _simulate(self, node):
-        "Return the reward for a random simulation of `node`"
-        return node.simulate(self.batch_size)
     
-    def _backpropagate(self, path, reward):
+    def _backpropagate(self, path, Q, N):
         "Send `reward` back up to the ancestors of `node`"
         if self.ancestors is None:
             for n in path:
-                self.Q[n] += reward
-                self.N[n] += self.batch_size
+                self.Q[n] += Q
+                self.N[n] += N
+                self.M[n] += self.batch_size
         else:
             ancestors = {path[-1]}
             for n in path:
                 ancestors.update(self.ancestors[n])
             for n in ancestors:
-                self.Q[n] += reward
-                self.N[n] += self.batch_size
+                self.Q[n] += Q
+                self.N[n] += N 
+                self.M[n] += self.batch_size
 
     def _select(self, node):
         "Select a child of node, balancing exploration & exploitation"

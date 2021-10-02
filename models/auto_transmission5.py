@@ -1,7 +1,7 @@
 import numpy as np
 from stl import Simulator
 
-class AutoTransmission(Simulator):
+class AutoTransmission5(Simulator):
     def __init__(self, throttles, thetas, tdelta, params={}):
         """
         Parameters
@@ -24,7 +24,7 @@ class AutoTransmission(Simulator):
         self.throttles = throttles  # Throttle: [0, 1]
         self.thetas = thetas        # Road slope (rad): [0, pi/2]
         self.tdelta = tdelta        # Time step
-        self.vspd = 0               # Vehicle speed (km/h)
+        self.vspd = 0               # Vehicle speed (m/s)
         self.espd = 0               # Engine speed (rpm)
         self.gear = 1               # Gear: 1, 2, 3, 4
         self.params = params
@@ -50,7 +50,7 @@ class AutoTransmission(Simulator):
                 return y1 / 2.237
             if throttle >= x2:
                 return y2 / 2.237
-            return (y1 + (y2 - y1)/(x2 - x1) * (throttle - x1)) / 2.237
+            return (y1 + (y2 - y1) / (x2 - x1) * (throttle - x1)) / 2.237
 
         def nearest_gear(x):
             return abs(x - self.gear)
@@ -106,7 +106,7 @@ class AutoTransmission(Simulator):
 
         throttle = self.throttles[self.clock]
         theta = self.thetas[self.clock]
-        ratio = alpha[max(self.gear - 1, 0)]
+        ratio = alpha[self.gear - 1]
         omega = ratio * self.vspd
         torque = max(Tm * (1 - beta * (omega / omega_m - 1)**2), 0)
         F = ratio * torque * throttle
@@ -129,7 +129,7 @@ class AutoTransmission(Simulator):
         dv = (F - Fd) / m
         
         self.espds.append(self.espd)
-        self.vspds.append(self.vspd * 2.237)
+        self.vspds.append(self.vspd * 2.237) # in mph instead of m/s
         self.gears.append(self.gear)
         
         self.vspd += dv * self.tdelta
@@ -139,15 +139,16 @@ class AutoTransmission(Simulator):
     def run(self, nb=5):
         for _ in range(self.slen):
             self.update()
-        return np.vstack([self.vspds, self.throttles, self.gears])[:, -nb:]
+        return np.vstack([self.espds, self.vspds])
 
-    def simulate(self, stl):
-        sample = None
-        while not stl.satisfy(sample):
-            throttles = list(np.random.random(self.slen))
-            at = AutoTransmission(throttles, self.thetas, self.tdelta)
-            sample = at.run()
-        return int(at.gear == 3)
+    def simulate(self):
+        noise = np.random.uniform(-0.4, 0.4, self.slen)
+        throttles = np.clip(np.array(self.throttles) + noise, 0.0, 1.0)
+        at = AutoTransmission5(throttles, self.thetas, self.tdelta)
+        sample = at.run()
+        cond1 = all(espd < 3000 for espd in at.espds) 
+        cond2 = any(vspd >= 65 for vspd in at.vspds[:int(20/self.tdelta)+1])
+        return sample, int(cond1 and cond2)
 
     def plot(self):
         ts = []
@@ -156,15 +157,22 @@ class AutoTransmission(Simulator):
             ts.append(t * self.tdelta)
         
         fig, axs = plt.subplots(3)
-        axs[0].plot(ts, self.throttles, color='b')
+        axs[0].plot(ts, self.throttles, 'b')
         axs[0].set_ylabel('throttle', color='b')
         axs[0].set_yticks(np.arange(0, 1.2, 0.2))
         axs[0].set_xticklabels([])
-        axs[1].plot(ts, self.espds, color='b')
+        axs[1].plot(ts, self.espds, 'b')
+        axs[1].plot(ts, [3000]*len(ts), 'r--')
         axs[1].set_ylabel('engine (rpm)', color='b')
         axs[1].set_yticks(np.arange(0, 6000, 1000))
         axs[1].set_xticklabels([])
-        axs[2].plot(ts, self.vspds, color='b')
+        axs[2].plot(ts, self.vspds, 'b')
+        axs[2].plot(ts, [35]*len(ts), 'r--')
+        axs[2].plot(ts, [50]*len(ts), 'r--')
+        axs[2].plot(ts, [65]*len(ts), 'r--')
+        axs[2].plot([4, 4], [self.vspds[int(4/self.tdelta)], 0], 'g--')
+        axs[2].plot([8, 8], [self.vspds[int(8/self.tdelta)], 0], 'g--')
+        axs[2].plot([20, 20], [self.vspds[int(20/self.tdelta)], 0], 'g--')
         axs[2].set_xlabel('time (s)')
         axs[2].set_ylabel('speed (mph)', color='b')
         axs[2].yaxis.set_ticks(np.arange(0, 150, 30))
@@ -173,18 +181,16 @@ class AutoTransmission(Simulator):
             axs[i].grid()
 
 
-# To execute from root: python3 -m models.auto_transmission
+# To execute from root: python3 -m models.auto_transmission4
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-    duration = 12
-    tdelta = 0.5
-    throttles = list(np.linspace(0.6, 0.4, int(duration/tdelta)))
-    throttles += [1.0]#list(np.linspace(1, 0.8, int(duration/tdelta)))
-    #throttles = throttles[:-4] + list(np.random.random(4))
+    tdelta = 2.0
+    throttles = list(np.linspace(0.7, 0.4, 6)) + [0.4]*4 + [0.1]*6
     thetas = [0.]*len(throttles)
 
-    at = AutoTransmission(throttles, thetas, tdelta)
+    at = AutoTransmission5(throttles, thetas, tdelta)
     at.plot()
+    print(at.espds)
     plt.show()
-    #plt.savefig(f'demo/auto_transmission2.png')
+    #plt.savefig(f'demo/auto_transmission3.png')
     

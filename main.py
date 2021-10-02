@@ -15,8 +15,9 @@ def simulate_thermostat(params) -> Simulator:
     from models.thermostat import Thermostat
     
     tm = Thermostat(out_temp=19, exp_temp=20, latency=2, length=5)
-    params['s']     = np.array([[19.53, 19.33, 19.83, 20.08, 19.37]])
+    params['s'] = np.array([[19.53, 19.33, 19.83, 20.08, 19.37]])
     params['range'] = [(0, (19, 21, 20))]
+    params['tau'] = 0.9999
     return tm
 
 def simulate_acas_xu(params) -> Simulator:
@@ -89,7 +90,21 @@ def simulate_auto_transmission4(params) -> Simulator:
     at = AutoTransmission4(throttles, thetas, tdelta)
     params['s'] = at.run()
     params['range'] = [(0, (0, 5000, 5)), (0, (60, 160, 5))]
-    params['epsilon'] = 0.03
+    params['epsilon'] = 0.02
+    return at
+
+def simulate_auto_transmission5(params) -> Simulator:
+    from models.auto_transmission5 import AutoTransmission5
+    
+    tdelta = 2.0
+    throttles = list(np.linspace(0.7, 0.4, 6)) + [0.4]*4 + [0.1]*6
+    thetas = [0.]*len(throttles)
+
+    at = AutoTransmission5(throttles, thetas, tdelta)
+    params['s'] = at.run()
+    params['range'] = [(0, (0, 4000, 4)), (0, (10, 70, 12))]
+    params['tau'] = 0.9999
+    params['epsilon'] = 0.02
     return at
 
 """
@@ -123,7 +138,8 @@ def main(params={}):
     #simulator = simulate_auto_transmission(params)
     #simulator = simulate_auto_transmission2(params)
     #simulator = simulate_auto_transmission3(params)
-    simulator = simulate_auto_transmission4(params)
+    #simulator = simulate_auto_transmission4(params)
+    simulator = simulate_auto_transmission5(params)
 
     method = 'MCTS'
     #method = 'KL-LUCB'
@@ -133,7 +149,7 @@ def main(params={}):
         return
     s           = params.get('s',           None)
     srange      = params.get('range',       None)
-    batch_size  = params.get('batch_size',  16  )
+    batch_size  = params.get('batch_size',  128 )
     tau         = params.get('tau',         0.95)
     rho         = params.get('rho',         0.01)
     epsilon     = params.get('epsilon',     0.01)
@@ -149,23 +165,27 @@ def main(params={}):
     interrupted = False
     if method == 'MCTS':
         max_depth = params.get('max_depth', 4)
-        tree = MCTS(batch_size=batch_size, max_depth=max_depth, 
-                    epsilon=epsilon)
+        tree = MCTS(max_depth=max_depth, epsilon=epsilon, tau=tau)
+        move = 0
         while not interrupted:
-            logging.info('Choosing best primitive...')
+            move += 1
+            logging.info(f'Move {move}. Choosing best primitive...')
             try:
+                tree.set_batch_size(move * batch_size)
                 tree.train(stl)
             except Exception as e:
                 logging.error(e)
                 interrupted = True
             finally:
-                stl = tree.choose(stl)
-                q, n = tree.Q[stl], tree.N[stl]
-                if not n:
-                    logging.info(f'{stl} ({q}/{n})')
-                    return
-                logging.info(f'{stl} ({q}/{n}={q/n:5.2%})')
-                if q / n > tau or len(stl) >= max_depth:
+                stls = tree.choose(stl)
+                for stl in stls:
+                    q, n, m = tree.Q[stl], tree.N[stl], tree.M[stl]
+                    if n == 0 or m == 0:
+                        logging.info(f'{stl} ({q}/{n}) ({n}/{m})')
+                        return
+                    logging.info(f'{stl} ({q}/{n}={q/n:5.2%}) ({n}/{m}={n/m:5.2%})')
+                stl = stls[0]
+                if len(stls) > 1 or len(stl) >= max_depth:
                     return
     else:
         beam_width = params.get('beam_width', 1)
@@ -173,8 +193,10 @@ def main(params={}):
         tree = KL_LUCB(batch_size=batch_size, beam_width=beam_width, 
                         delta=delta, epsilon=epsilon)
         cands = {stl}
+        move = 0
         while not interrupted:
-            logging.info('Choosing best primitive...')
+            move += 1
+            logging.info(f'Move {move}. Choosing best primitive...')
             cands = tree.get_cands(cands)
             try:
                 tree.train(cands)

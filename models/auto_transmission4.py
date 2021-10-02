@@ -1,6 +1,4 @@
 import numpy as np
-from joblib import load
-import os.path
 from stl import Simulator
 
 class AutoTransmission4(Simulator):
@@ -158,16 +156,22 @@ class AutoTransmission4(Simulator):
             ts.append(t * self.tdelta)
         
         fig, axs = plt.subplots(3)
-        axs[0].plot(ts, self.throttles, color='b')
+        axs[0].plot(ts, self.throttles, 'b')
         axs[0].set_ylabel('throttle', color='b')
         axs[0].set_yticks(np.arange(0, 1.2, 0.2))
         axs[0].set_xticklabels([])
-        axs[1].plot(ts, self.espds, color='b')
+        axs[1].plot(ts, self.espds, 'b')
+        axs[1].plot(ts, [3000]*len(ts), 'r--')
         axs[1].set_ylabel('engine (rpm)', color='b')
         axs[1].set_yticks(np.arange(0, 6000, 1000))
         axs[1].set_xticklabels([])
-        axs[2].plot(ts, self.vspds, color='b')
-        axs[2].plot(ts, [120]*len(ts), color='r')
+        axs[2].plot(ts, self.vspds, 'b')
+        axs[2].plot(ts, [35]*len(ts), 'r--')
+        axs[2].plot(ts, [50]*len(ts), 'r--')
+        axs[2].plot(ts, [65]*len(ts), 'r--')
+        axs[2].plot([4, 4], [self.vspds[int(4*self.tdelta)], 0], 'g--')
+        axs[2].plot([8, 8], [self.vspds[int(8*self.tdelta)], 0], 'g--')
+        axs[2].plot([20, 20], [self.vspds[int(20*self.tdelta)], 0], 'g--')
         axs[2].set_xlabel('time (s)')
         axs[2].set_ylabel('speed (mph)', color='b')
         axs[2].yaxis.set_ticks(np.arange(0, 150, 30))
@@ -180,14 +184,12 @@ class AutoTransmission4(Simulator):
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     tdelta = 1.0
-    throttles = [0.95]*21
-    #throttles = list(np.linspace(0.6, 0.4, 150))
-    #throttles += list(np.linspace(1.0, 0.8, 150))
+    throttles = [1.0] + list(np.linspace(0.6, 0.4, 10)) + [0.4]*10 + [0.2]*10
     thetas = [0.]*len(throttles)
 
     at = AutoTransmission4(throttles, thetas, tdelta)
     at.plot()
-    print(at.vspds)
+    print(at.espds)
     plt.show()
     #plt.savefig(f'demo/auto_transmission3.png')
     
