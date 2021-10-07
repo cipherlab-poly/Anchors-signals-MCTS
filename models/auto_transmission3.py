@@ -141,13 +141,13 @@ class AutoTransmission3(Simulator):
             self.update()
         return np.vstack([self.espds, self.vspds])
 
-    def simulate(self, stl):
-        sample = None
-        while not stl.satisfy(sample):
-            throttles = np.random.uniform(-1, 1, self.slen) + np.array(self.throttles)
-            at = AutoTransmission3(throttles, self.thetas, self.tdelta)
-            sample = at.run()
-        return int(any(espd >= 4750 for espd in at.espds[:int(10/self.tdelta)+1]))
+    def simulate(self):
+        noise = np.random.uniform(-0.4, 0.4, self.slen)
+        throttles = np.clip(np.array(self.throttles) + noise, 0.0, 1.0)
+        at = AutoTransmission3(throttles, self.thetas, self.tdelta)
+        sample = at.run()
+        score = int(any(espd >= 4750 for espd in at.espds[:int(10/self.tdelta)+1]))
+        return sample, score
 
     def plot(self):
         ts = []
@@ -158,27 +158,29 @@ class AutoTransmission3(Simulator):
         fig, axs = plt.subplots(3)
         axs[0].plot(ts, self.throttles, color='b')
         axs[0].set_ylabel('throttle', color='b')
+        axs[0].set_ylim([0, 1])
         axs[0].set_yticks(np.arange(0, 1.2, 0.2))
         axs[0].set_xticklabels([])
         axs[1].plot(ts, self.espds, color='b')
-        axs[1].plot(ts, [4750]*len(ts), color='r')
+        axs[1].plot(ts, [4750]*len(ts), 'r--')
         axs[1].set_ylabel('engine (rpm)', color='b')
         axs[1].set_yticks(np.arange(0, 6000, 1000))
         axs[1].set_xticklabels([])
         axs[2].plot(ts, self.vspds, color='b')
-        axs[2].set_xlabel('time (s)')
         axs[2].set_ylabel('speed (mph)', color='b')
         axs[2].yaxis.set_ticks(np.arange(0, 150, 30))
-        for i in range(3):
-            axs[i].margins(x=0)
-            axs[i].grid()
-
+        axs[2].set_xticklabels([])
+        axs[2].set_xlabel('time (s)')
+        for ax in axs:
+            ax.margins(x=0)
+            ax.margins(y=0.1)
+            ax.grid()
 
 # To execute from root: python3 -m models.auto_transmission3
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-    tdelta = 1.0
-    throttles = ([0.55]*5 + [0.95]*5) * 2 + [0.9]
+    tdelta = 0.1
+    throttles = ([0.55]*50 + [0.95]*50) * 2 + [0.95]
     #throttles = list(np.linspace(0.6, 0.4, 150))
     #throttles += list(np.linspace(1.0, 0.8, 150))
     thetas = [0.]*len(throttles)

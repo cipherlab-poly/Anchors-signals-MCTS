@@ -136,18 +136,16 @@ class AutoTransmission(Simulator):
         self.shift_gear()
         self.clock += 1
 
-    def run(self, nb=5):
+    def run(self):
         for _ in range(self.slen):
             self.update()
-        return np.vstack([self.vspds, self.throttles, self.gears])[:, -nb:]
+        return np.vstack([self.vspds, self.throttles])[:, -5:]
 
-    def simulate(self, stl):
-        sample = None
-        while not stl.satisfy(sample):
-            throttles = list(np.random.random(self.slen))
-            at = AutoTransmission(throttles, self.thetas, self.tdelta)
-            sample = at.run()
-        return int(at.gear == 3)
+    def simulate(self):
+        throttles = list(np.random.random(self.slen))
+        at = AutoTransmission(throttles, self.thetas, self.tdelta)
+        sample = at.run()
+        return sample, at.gear == 3
 
     def plot(self):
         ts = []
@@ -155,7 +153,7 @@ class AutoTransmission(Simulator):
             self.update()
             ts.append(t * self.tdelta)
         
-        fig, axs = plt.subplots(3)
+        fig, axs = plt.subplots(4)
         axs[0].plot(ts, self.throttles, color='b')
         axs[0].set_ylabel('throttle', color='b')
         axs[0].set_yticks(np.arange(0, 1.2, 0.2))
@@ -165,22 +163,29 @@ class AutoTransmission(Simulator):
         axs[1].set_yticks(np.arange(0, 6000, 1000))
         axs[1].set_xticklabels([])
         axs[2].plot(ts, self.vspds, color='b')
-        axs[2].set_xlabel('time (s)')
+        axs[2].set_xticklabels([])
         axs[2].set_ylabel('speed (mph)', color='b')
         axs[2].yaxis.set_ticks(np.arange(0, 150, 30))
-        for i in range(3):
-            axs[i].margins(x=0)
-            axs[i].grid()
+        axs[3].plot(ts, self.gears, color='b')
+        axs[3].set_ylabel('gear', color='b')
+        axs[3].set_yticks(range(5))
+        axs[3].set_xlabel('time (s)')
+        axs[3].set_xticks([5, 10, 12, 15, 20, 25])
+        for ax in axs:
+            ax.margins(x=0)
+            ax.margins(y=0.1)
+            ax.plot([12, 12], ax.get_ylim(), 'r--')
+            ax.grid()
+
 
 
 # To execute from root: python3 -m models.auto_transmission
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     duration = 12
-    tdelta = 0.5
+    tdelta = 0.1
     throttles = list(np.linspace(0.6, 0.4, int(duration/tdelta)))
-    throttles += [1.0]#list(np.linspace(1, 0.8, int(duration/tdelta)))
-    #throttles = throttles[:-4] + list(np.random.random(4))
+    throttles += list(np.linspace(1, 0.8, int(duration/tdelta)))
     thetas = [0.]*len(throttles)
 
     at = AutoTransmission(throttles, thetas, tdelta)

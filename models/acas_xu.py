@@ -39,9 +39,9 @@ class ACAS_XU(Simulator):
         angle = theta0 + psi0
         self.x_own = rho0 * np.array([-np.sin(angle), np.cos(angle)])
         self.v_own = self.norm_v_own * np.array([np.sin(psi0), np.cos(psi0)])
-        self.a_prev = 0
-        self.a_actual = 0
-        self.sample = np.zeros((3, 0))
+        self.a_prev = 4
+        self.a_actual = 4
+        self.sample = np.zeros((3, 10))
 
     def load_nnets(self):
         for a_prev in range(5):
@@ -93,7 +93,7 @@ class ACAS_XU(Simulator):
         outputs = nnet.evaluate_network(self.get_inputs())
         self.a_actual = np.argmin(outputs)
     
-    def update(self, log=False):
+    def update(self):
         self._control()
         rate = self.heading_rate[self.a_actual]
         cos = np.cos(rate * self.tdelta)
@@ -101,26 +101,25 @@ class ACAS_XU(Simulator):
         self.v_own = np.array([[cos, -sin], [sin, cos]]) @ self.v_own
         self.x_own += (self.v_own - self.v_int) * self.tdelta
         self.x_int += self.v_int * self.tdelta
-        data = self.get_inputs()[:3]
-        self.sample = np.hstack((self.sample, data.reshape((3, -1))))
-        if log:
-            self.log_state()
 
-    def run(self, nb=4):
-        for _ in range(self.slen):
+    def run(self):
+        nb = self.sample.shape[1]
+        for _ in range(self.slen-nb):
             self.update()
-        return self.sample[:, -nb:]
+        for i in range(nb):
+            self.sample[:3, i] = self.get_inputs()[:3]
+            #self.sample[3, i] = self.a_prev
+            self.update()
+        return self.sample
     
-    def simulate(self, stl):
-        sample = None
-        while not stl.satisfy(sample):
-            random = np.zeros(5, dtype=np.float64)
-            uniform = np.random.uniform(-1, 1, 3)
-            random[0] = uniform[0] * 3000
-            random[1:3] = uniform[1:3] * np.pi/2
-            acasxu = ACAS_XU(self.state0 + random, self.tdelta, self.slen)
-            sample = acasxu.run()
-        return int(acasxu.a_actual == 2)
+    def simulate(self):
+        random = np.zeros(5, dtype=np.float64)
+        random[:3] = np.random.uniform(-1, 1, 3)
+        random[0] *= 3000
+        random[1:3] *= np.pi/2
+        acasxu = ACAS_XU(self.state0 + random, self.tdelta, self.slen)
+        sample = acasxu.run()
+        return sample, acasxu.a_actual == 2
 
 # To execute from root: python3 -m models.acas_xu
 if __name__ == '__main__':

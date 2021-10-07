@@ -38,20 +38,33 @@ class MCTS:
     def set_batch_size(self, batch_size):
         self.batch_size = batch_size
     
+    def clean(self, parent, child):
+        self.Q.pop(parent, None)
+        self.N.pop(parent, None)
+        self.M.pop(parent, None)
+        for node in self.children[parent] - self.children[child] - {child}:
+            self.Q.pop(node, None)
+            self.N.pop(node, None)
+            self.M.pop(node, None)
+            self.children.pop(node, None)
+        self.children.pop(parent, None)
+    
     def choose(self, node):
         "Choose the best successor of node. (Choose a move in the game)"
         
         def ucb1tuned(n):
-            mu, N = self._score(n)
+            p, N = self._score(n)
             if not N:
                 return float('-inf')
-            tmp = math.sqrt(self.ce* math.log(self.N[node]) / N)
-            return mu - tmp * math.sqrt(min(0.25, mu * (1 - mu) + tmp))
+            tmp = math.sqrt(self.ce * math.log(self.N[node]) / N)
+            return p - tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
         
         def coverage(n):
+            cov = self.N[n] / self.M[n]
             if not self.M[n]:
-                return (0.0, 0)
-            return (self.N[n] / self.M[n], self.N[n])
+                return float('-inf')
+            tmp = math.sqrt(self.ce * math.log(self.M[node]) / self.M[n])
+            return cov - tmp * math.sqrt(min(0.25, cov * (1 - cov) + tmp))
         
         if all(self._score(n)[0] < self.tau for n in self.children[node]):
             return [max(self.children[node], key=ucb1tuned)]
@@ -71,10 +84,10 @@ class MCTS:
 
             if self.children[node]:
                 best = self.choose(node)[0]
-                mu, N = self._score(best)
+                p, N = self._score(best)
                 if N:
                     tmp = math.sqrt(self.ce * math.log(self.N[node]) / N)
-                    err = 2 * tmp * math.sqrt(min(0.25, mu * (1 - mu) + tmp))
+                    err = 2 * tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
                     err = min(err, 1.0)
 
     def _rollout(self, node):
@@ -131,11 +144,11 @@ class MCTS:
         "Select a child of node, balancing exploration & exploitation"
         
         def ucb1tuned(n):
-            mu, N = self._score(n)
+            p, N = self._score(n)
             if not N:
                 return float('inf')
             tmp = math.sqrt(self.ce* math.log(self.N[node]) / N)
-            return mu + tmp * math.sqrt(min(0.25, mu * (1 - mu) + tmp))
+            return p + tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
         
         return max(self.children[node], key=ucb1tuned)
 

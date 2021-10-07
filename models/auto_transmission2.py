@@ -151,13 +151,12 @@ class AutoTransmission2(Simulator):
             self.update()
         return np.vstack([self.vspds, self.throttles, self.gears])[:, -nb:]
 
-    def simulate(self, stl):
-        sample = None
-        while not stl.satisfy(sample):
-            throttles = list(np.random.random(self.slen))
-            at = AutoTransmission2(throttles, self.thetas, self.tdelta)
-            sample = at.run()
-        return int(at.gear == 2)
+    def simulate(self):
+        throttles = list(np.random.random(self.slen))
+        at = AutoTransmission2(throttles, self.thetas, self.tdelta)
+        sample = at.run()
+        score = int(at.gear == 2)
+        return sample, score
 
     def plot(self):
         ts = []

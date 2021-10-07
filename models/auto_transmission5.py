@@ -170,18 +170,20 @@ class AutoTransmission5(Simulator):
         axs[2].plot(ts, [35]*len(ts), 'r--')
         axs[2].plot(ts, [50]*len(ts), 'r--')
         axs[2].plot(ts, [65]*len(ts), 'r--')
-        axs[2].plot([4, 4], [self.vspds[int(4/self.tdelta)], 0], 'g--')
-        axs[2].plot([8, 8], [self.vspds[int(8/self.tdelta)], 0], 'g--')
-        axs[2].plot([20, 20], [self.vspds[int(20/self.tdelta)], 0], 'g--')
-        axs[2].set_xlabel('time (s)')
+        #axs[2].plot([4, 4], [self.vspds[int(4/self.tdelta)], 0], 'g--')
+        #axs[2].plot([8, 8], [self.vspds[int(8/self.tdelta)], 0], 'g--')
+        #axs[2].plot([20, 20], [self.vspds[int(20/self.tdelta)], 0], 'g--')
         axs[2].set_ylabel('speed (mph)', color='b')
         axs[2].yaxis.set_ticks(np.arange(0, 150, 30))
-        for i in range(3):
-            axs[i].margins(x=0)
-            axs[i].grid()
+        axs[2].set_xlabel('time (s)')
+        axs[2].set_xticks([4, 5, 8, 10, 15, 20, 25, 30])
+        for ax in axs:
+            ax.margins(x=0)
+            ax.margins(y=0.1)
+            ax.grid()
 
 
-# To execute from root: python3 -m models.auto_transmission4
+# To execute from root: python3 -m models.auto_transmission5
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     tdelta = 2.0

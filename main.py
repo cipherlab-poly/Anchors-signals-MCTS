@@ -26,12 +26,13 @@ def simulate_acas_xu(params) -> Simulator:
     state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
     acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
     acasxu.load_nnets()
-    smins = [0.0, 0.0, -np.pi]
-    smaxes = [8000.0, np.pi, 0.0]
+    mins = [0.0, 0.0, -np.pi]
+    maxes = [8000.0, np.pi, 0.0]
     params['s'] = acasxu.run()
-    params['range'] = [(0, (smins[i], smaxes[i], 8)) for i in range(3)]
+    params['range'] = [(0, (mins[i], maxes[i], 8)) for i in range(3)]
+    params['range'] += [(1, list(range(5)))]
     params['tau'] = 0.98
-    params['epsilon'] = 0.015
+    params['epsilon'] = 0.02
     params['past'] = True
     return acasxu
 
@@ -39,14 +40,14 @@ def simulate_auto_transmission(params) -> Simulator:
     from models.auto_transmission import AutoTransmission
 
     duration = 12
-    tdelta = 0.5
+    tdelta = 1.0
     throttles = list(np.linspace(0.6, 0.4, int(duration/tdelta)))
     throttles += [1.0]
     thetas = [0.] * len(throttles)
     at = AutoTransmission(throttles, thetas, tdelta)
     params['s'] = at.run()
-    params['range'] = [(0, (0, 200, 8)), (0, (0, 1, 10)), (1, [1, 2, 3, 4])]
-    params['epsilon'] = 0.015
+    params['range'] = [(0, (0, 80, 8)), (0, (0, 1, 10))]
+    params['epsilon'] = 0.02
     params['tau'] = 0.98
     params['past'] = True
     return at
@@ -71,13 +72,14 @@ def simulate_auto_transmission3(params) -> Simulator:
     from models.auto_transmission3 import AutoTransmission3
     
     tdelta = 1.0
-    throttles = [0.55]*5 + [0.9]*5 + [0.55]*5
+    throttles = [0.55]*5 + [0.9]*5 + [0.55]*6
     thetas = [0.]*len(throttles)
 
     at = AutoTransmission3(throttles, thetas, tdelta)
     params['s'] = at.run()
-    params['range'] = [(0, (1000, 6000, 20)), (0, (0, 160, 8))]
+    params['range'] = [(0, (0, 6000, 24)), (0, (0, 160, 8))]
     params['epsilon'] = 0.02
+    params['tau'] = 0.9999
     return at
 
 def simulate_auto_transmission4(params) -> Simulator:
@@ -89,8 +91,9 @@ def simulate_auto_transmission4(params) -> Simulator:
 
     at = AutoTransmission4(throttles, thetas, tdelta)
     params['s'] = at.run()
-    params['range'] = [(0, (0, 5000, 5)), (0, (60, 160, 5))]
+    params['range'] = [(0, (0, 5000, 5)), (0, (0, 160, 8))]
     params['epsilon'] = 0.02
+    params['tau'] = 0.9999
     return at
 
 def simulate_auto_transmission5(params) -> Simulator:
@@ -134,12 +137,12 @@ epsilon: float
 
 def main(params={}):
     #simulator = simulate_thermostat(params)
-    #simulator = simulate_acas_xu(params)
+    simulator = simulate_acas_xu(params)
     #simulator = simulate_auto_transmission(params)
     #simulator = simulate_auto_transmission2(params)
     #simulator = simulate_auto_transmission3(params)
     #simulator = simulate_auto_transmission4(params)
-    simulator = simulate_auto_transmission5(params)
+    #simulator = simulate_auto_transmission5(params)
 
     method = 'MCTS'
     #method = 'KL-LUCB'
@@ -162,31 +165,29 @@ def main(params={}):
     nb = stl.init(primitives, simulator)
     logging.info(f'Done. {nb} primitives.')
 
-    interrupted = False
     if method == 'MCTS':
         max_depth = params.get('max_depth', 4)
         tree = MCTS(max_depth=max_depth, epsilon=epsilon, tau=tau)
         move = 0
-        while not interrupted:
+        while True:
             move += 1
             logging.info(f'Move {move}. Choosing best primitive...')
+            tree.set_batch_size(move * batch_size)
             try:
-                tree.set_batch_size(move * batch_size)
                 tree.train(stl)
-            except Exception as e:
-                logging.error(e)
-                interrupted = True
-            finally:
-                stls = tree.choose(stl)
-                for stl in stls:
-                    q, n, m = tree.Q[stl], tree.N[stl], tree.M[stl]
-                    if n == 0 or m == 0:
-                        logging.info(f'{stl} ({q}/{n}) ({n}/{m})')
-                        return
-                    logging.info(f'{stl} ({q}/{n}={q/n:5.2%}) ({n}/{m}={n/m:5.2%})')
-                stl = stls[0]
-                if len(stls) > 1 or len(stl) >= max_depth:
+            except KeyboardInterrupt:
+                logging.warning('Interrupted')
+            stls = tree.choose(stl)
+            for stl in stls:
+                q, n, m = tree.Q[stl], tree.N[stl], tree.M[stl]
+                if n == 0 or m == 0:
+                    logging.info(f'{stl} ({q}/{n}) ({n}/{m})')
                     return
+                logging.info(f'{stl} ({q}/{n}={q/n:5.2%}) ({n}/{m}={n/m:5.2%})')
+            if len(stls) > 1 or len(stl) >= max_depth:
+                return
+            tree.clean(stl, stls[0])
+            stl = stls[0]
     else:
         beam_width = params.get('beam_width', 1)
         delta = params.get('delta', 0.01)
@@ -194,15 +195,14 @@ def main(params={}):
                         delta=delta, epsilon=epsilon)
         cands = {stl}
         move = 0
-        while not interrupted:
+        while True:
             move += 1
             logging.info(f'Move {move}. Choosing best primitive...')
-            cands = tree.get_cands(cands)
+            cands = tree.get_cands(cands)    
             try:
                 tree.train(cands)
-            except Exception as e:
-                logging.error(e)
-                interrupted = True
+            except KeyboardInterrupt:
+                logging.warning('Interrupted')
             stls = tree.choose(cands)
             for stl in stls:
                 q, n = tree.Q[stl], tree.N[stl]
