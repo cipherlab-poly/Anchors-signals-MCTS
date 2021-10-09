@@ -41,7 +41,7 @@ class ACAS_XU(Simulator):
         self.v_own = self.norm_v_own * np.array([np.sin(psi0), np.cos(psi0)])
         self.a_prev = 4
         self.a_actual = 4
-        self.sample = np.zeros((3, 10))
+        self.sample = np.zeros((3, 4))
 
     def load_nnets(self):
         for a_prev in range(5):
@@ -114,25 +114,19 @@ class ACAS_XU(Simulator):
     
     def simulate(self):
         random = np.zeros(5, dtype=np.float64)
-        random[:3] = np.random.uniform(-1, 1, 3)
-        random[0] *= 3000
-        random[1:3] *= np.pi/2
-        acasxu = ACAS_XU(self.state0 + random, self.tdelta, self.slen)
+        random[0] = np.random.uniform(2000, 8000)
+        random[1] = np.random.uniform(0, np.pi)
+        random[2] = np.random.uniform(-np.pi, 0)
+        random[3:] = self.state0[3:]
+        acasxu = ACAS_XU(random, self.tdelta, self.slen)
         sample = acasxu.run()
         return sample, acasxu.a_actual == 2
 
 # To execute from root: python3 -m models.acas_xu
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, 
-        format='%(asctime)s %(levelname)-5s %(message)s',
-        datefmt='%H:%M:%S')
-
     state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
-    random = np.random.uniform(-1, 1, 5)
-    random[0] = 2000#*= 3000
-    random[1:3] *= np.pi/4
-    random[3:] *= 0
-    acasxu = ACAS_XU(state0 + random, tdelta=1.0, slen=10)
+    acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
     acasxu.load_nnets()
     sample = acasxu.run()
-    logging.info(sample)
+    print(sample)
+    print(acasxu.a_actual)

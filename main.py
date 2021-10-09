@@ -7,11 +7,10 @@ from kl_lucb import KL_LUCB
 from stl import STL, PrimitiveGenerator, Simulator
 
 import logging
-logging.basicConfig(level=logging.INFO, 
-                    format='%(asctime)s %(levelname)-5s %(message)s',
-                    datefmt='%H:%M:%S')
+import sys, os
+from datetime import datetime
 
-def simulate_thermostat(params) -> Simulator:
+def thermostat(params) -> Simulator:
     from models.thermostat import Thermostat
     
     tm = Thermostat(out_temp=19, exp_temp=20, latency=2, length=5)
@@ -20,7 +19,7 @@ def simulate_thermostat(params) -> Simulator:
     params['tau'] = 0.9999
     return tm
 
-def simulate_acas_xu(params) -> Simulator:
+def acas_xu(params) -> Simulator:
     from models.acas_xu import ACAS_XU
 
     state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
@@ -31,12 +30,13 @@ def simulate_acas_xu(params) -> Simulator:
     params['s'] = acasxu.run()
     params['range'] = [(0, (mins[i], maxes[i], 8)) for i in range(3)]
     params['range'] += [(1, list(range(5)))]
-    params['tau'] = 0.98
-    params['epsilon'] = 0.02
+    params['tau'] = 0.95
+    params['epsilon'] = 0.015
+    params['max_depth'] = 5
     params['past'] = True
     return acasxu
 
-def simulate_auto_transmission(params) -> Simulator:
+def auto_transmission(params) -> Simulator:
     from models.auto_transmission import AutoTransmission
 
     duration = 12
@@ -46,13 +46,14 @@ def simulate_auto_transmission(params) -> Simulator:
     thetas = [0.] * len(throttles)
     at = AutoTransmission(throttles, thetas, tdelta)
     params['s'] = at.run()
-    params['range'] = [(0, (0, 80, 8)), (0, (0, 1, 10))]
-    params['epsilon'] = 0.02
-    params['tau'] = 0.98
+    params['range'] = [(0, (0, 5000, 5)), (0, (0, 80, 16))]
+    params['range'] += [(0, (0, 1, 10)), (1, list(range(1, 5)))]
+    params['epsilon'] = 0.015
+    params['tau'] = 0.99
     params['past'] = True
     return at
 
-def simulate_auto_transmission2(params) -> Simulator:
+def auto_transmission2(params) -> Simulator:
     from models.auto_transmission2 import AutoTransmission2
 
     duration = 12
@@ -68,7 +69,7 @@ def simulate_auto_transmission2(params) -> Simulator:
     params['past'] = True
     return at
 
-def simulate_auto_transmission3(params) -> Simulator:
+def auto_transmission3(params) -> Simulator:
     from models.auto_transmission3 import AutoTransmission3
     
     tdelta = 1.0
@@ -82,7 +83,7 @@ def simulate_auto_transmission3(params) -> Simulator:
     params['tau'] = 0.9999
     return at
 
-def simulate_auto_transmission4(params) -> Simulator:
+def auto_transmission4(params) -> Simulator:
     from models.auto_transmission4 import AutoTransmission4
     
     tdelta = 1.0
@@ -96,7 +97,7 @@ def simulate_auto_transmission4(params) -> Simulator:
     params['tau'] = 0.9999
     return at
 
-def simulate_auto_transmission5(params) -> Simulator:
+def auto_transmission5(params={}) -> Simulator:
     from models.auto_transmission5 import AutoTransmission5
     
     tdelta = 2.0
@@ -135,18 +136,8 @@ epsilon: float
     maximum tolerated error 
 """
 
-def main(params={}):
-    #simulator = simulate_thermostat(params)
-    simulator = simulate_acas_xu(params)
-    #simulator = simulate_auto_transmission(params)
-    #simulator = simulate_auto_transmission2(params)
-    #simulator = simulate_auto_transmission3(params)
-    #simulator = simulate_auto_transmission4(params)
-    #simulator = simulate_auto_transmission5(params)
-
-    method = 'MCTS'
-    #method = 'KL-LUCB'
-
+def main(simulator, params={}, method='MCTS'):
+    simulator = eval(simulator)(params)
     if not {'s', 'range'}.issubset(params.keys()):
         logging.error('something undefined in params among {s, range}')
         return
@@ -169,14 +160,17 @@ def main(params={}):
         max_depth = params.get('max_depth', 4)
         tree = MCTS(max_depth=max_depth, epsilon=epsilon, tau=tau)
         move = 0
-        while True:
+        interrupted = False
+        while not interrupted:
             move += 1
             logging.info(f'Move {move}. Choosing best primitive...')
             tree.set_batch_size(move * batch_size)
             try:
-                tree.train(stl)
+                nb = tree.train(stl)
+                logging.info(f'{nb} rollouts to reach error {epsilon:5.2%}')
             except KeyboardInterrupt:
                 logging.warning('Interrupted')
+                interrupted = True
             stls = tree.choose(stl)
             for stl in stls:
                 q, n, m = tree.Q[stl], tree.N[stl], tree.M[stl]
@@ -195,7 +189,8 @@ def main(params={}):
                         delta=delta, epsilon=epsilon)
         cands = {stl}
         move = 0
-        while True:
+        interrupted = False
+        while not interrupted:
             move += 1
             logging.info(f'Move {move}. Choosing best primitive...')
             cands = tree.get_cands(cands)    
@@ -203,6 +198,7 @@ def main(params={}):
                 tree.train(cands)
             except KeyboardInterrupt:
                 logging.warning('Interrupted')
+                interrupted = True
             stls = tree.choose(cands)
             for stl in stls:
                 q, n = tree.Q[stl], tree.N[stl]
@@ -215,4 +211,19 @@ def main(params={}):
                 cands = stls
 
 if __name__ == '__main__':
-    main()
+    #simulator = 'thermostat'
+    #simulator = 'acas_xu'
+    simulator = 'auto_transmission'
+    #simulator = 'auto_transmission2'
+    #simulator = 'auto_transmission3'
+    #simulator = 'auto_transmission4'
+    #simulator = 'auto_transmission5'
+
+    now = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+    os.makedirs('log', exist_ok=True)
+    logging.basicConfig(filename=f'log/{now}-{simulator}.log', 
+                        level=logging.INFO, 
+                        format='%(asctime)s %(message)s',
+                        datefmt='%H:%M:%S')
+    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+    main(simulator)

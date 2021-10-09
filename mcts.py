@@ -79,7 +79,9 @@ class MCTS:
         i = 0
         while err > self.epsilon:
             i += 1
-            print(f'\033[1;93m Iter {i} Error {err:5.2%} \033[1;m', end='   \r')
+            if not i % 10:
+                print(f'\033[1;93m Iter {i} Error {err:5.2%} \033[1;m', 
+                        end='   \r')
             self._rollout(node)
 
             if self.children[node]:
@@ -89,6 +91,7 @@ class MCTS:
                     tmp = math.sqrt(self.ce * math.log(self.N[node]) / N)
                     err = 2 * tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
                     err = min(err, 1.0)
+        return i
 
     def _rollout(self, node):
         "Make the tree one layer better (train for one iteration)"
