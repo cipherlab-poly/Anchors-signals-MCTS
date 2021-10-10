@@ -14,12 +14,6 @@ import numpy as np
 import itertools
 import heapq
 
-# visual
-import networkx as nx
-import matplotlib.pyplot as plt
-import pydot
-from networkx.drawing.nx_pydot import graphviz_layout
-
 class KL_LUCB:
 
     def __init__(self, batch_size=256, beam_width=8, delta=0.01, epsilon=0.01):

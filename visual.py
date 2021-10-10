@@ -1,6 +1,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 import pydot
+import itertools
 from networkx.drawing.nx_pydot import graphviz_layout
 
 class Visual:
@@ -30,9 +31,10 @@ class Visual:
     def _node_label(self, node):
         q = self.tree.Q[node]
         n = self.tree.N[node]
+        m = self.tree.M[node]
         if n:
-            return f'{q}/{n}={q/n:5.2%}'
-        return '0/0'
+            return f'\np={q}/{n}={q/n:5.2%}\nc={n}/{m}={n/m:5.2%}'
+        return f'\np=0/0\nc=0/{m}'
     
     def _layout(self, prog):
         auxG = nx.DiGraph(self.G)
@@ -44,3 +46,35 @@ class Visual:
                 elif (node1, node2) in auxG.edges:
                     auxG.remove_edge(node1, node2)    
         return graphviz_layout(auxG, prog=prog)
+
+if __name__ == '__main__':
+    import numpy as np
+    from mcts import MCTS
+    from stl import STL, PrimitiveGenerator, Simulator
+    from models.thermostat import Thermostat
+    
+    simulator   = Thermostat(out_temp=19, exp_temp=20, latency=2, length=5)
+    s           = np.array([[19, 21]])
+    srange      = [(0, (18, 22, 4))]
+    tau         = 0.9999
+    batch_size  = 128
+    tau         = 0.95
+    rho         = 0.01
+    epsilon     = 0.3
+    past        = False
+    max_depth   = 2
+
+    stl = STL()
+    primitives = PrimitiveGenerator(s, srange, rho, past).generate()    
+    nb = stl.init(primitives, simulator)
+    tree = MCTS(max_depth=max_depth, epsilon=epsilon, tau=tau)
+    move = 0
+    while True:
+        move += 1
+        tree.set_batch_size(batch_size)
+        nb = tree.train(stl)
+        stls = tree.choose(stl)
+        if len(stls) > 1 or len(stl) >= max_depth:
+            break
+        stl = stls[0]
+    tree.visualize()

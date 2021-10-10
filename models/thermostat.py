@@ -39,7 +39,7 @@ class Thermostat(Simulator):
     def simulate(self):
         tm = Thermostat(self.out_temp, self.exp_temp, self.latency, self.length)
         sample = tm.run()
-        return sample, int(tm.on == 0)
+        return sample, tm.on == 0
         
     def plot(self):
         import matplotlib.pyplot as plt

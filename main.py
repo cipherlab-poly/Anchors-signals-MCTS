@@ -2,8 +2,6 @@ import numpy as np
 np.set_printoptions(precision=2, suppress=True)
 np.random.seed(42)
 
-from mcts import MCTS
-from kl_lucb import KL_LUCB
 from stl import STL, PrimitiveGenerator, Simulator
 
 import logging
@@ -130,8 +128,6 @@ rho: float
     robustness degree (~coverage) threshold
 max_depth: int
     maximum depth to expand the tree
-delta: float
-    confidence threshold
 epsilon: float
     maximum tolerated error 
 """
@@ -157,6 +153,7 @@ def main(simulator, params={}, method='MCTS'):
     logging.info(f'Done. {nb} primitives.')
 
     if method == 'MCTS':
+        from mcts import MCTS
         max_depth = params.get('max_depth', 4)
         tree = MCTS(max_depth=max_depth, epsilon=epsilon, tau=tau)
         move = 0
@@ -183,6 +180,7 @@ def main(simulator, params={}, method='MCTS'):
             tree.clean(stl, stls[0])
             stl = stls[0]
     else:
+        from kl_lucb import KL_LUCB
         beam_width = params.get('beam_width', 1)
         delta = params.get('delta', 0.01)
         tree = KL_LUCB(batch_size=batch_size, beam_width=beam_width, 
@@ -211,9 +209,9 @@ def main(simulator, params={}, method='MCTS'):
                 cands = stls
 
 if __name__ == '__main__':
-    #simulator = 'thermostat'
+    simulator = 'thermostat'
     #simulator = 'acas_xu'
-    simulator = 'auto_transmission'
+    #simulator = 'auto_transmission'
     #simulator = 'auto_transmission2'
     #simulator = 'auto_transmission3'
     #simulator = 'auto_transmission4'
