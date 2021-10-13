@@ -11,7 +11,7 @@ import itertools
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
-    def __init__(self, max_depth=5, epsilon=0.01, tau=0.01, ancestors=True):
+    def __init__(self, max_depth, epsilon, tau, ancestors=True):
         self.max_depth  = max_depth
         self.epsilon    = epsilon
         self.tau        = tau
@@ -25,9 +25,6 @@ class MCTS:
         # Monte-Carlo (precision = Q/N)
         self.Q = defaultdict(int)
         self.N = defaultdict(int)
-
-        # Coverage = N/M
-        self.M = defaultdict(int)
         
         # Hyperparameter for ucb1tuned
         self.ce = 2
@@ -35,17 +32,18 @@ class MCTS:
         # To be increased after each move
         self.batch_size = None
 
+        # Found an anchor
+        self.anchor_found = False
+
     def set_batch_size(self, batch_size):
         self.batch_size = batch_size
     
     def clean(self, parent, child):
         self.Q.pop(parent, None)
         self.N.pop(parent, None)
-        self.M.pop(parent, None)
         for node in self.children[parent] - self.children[child] - {child}:
             self.Q.pop(node, None)
             self.N.pop(node, None)
-            self.M.pop(node, None)
             self.children.pop(node, None)
         self.children.pop(parent, None)
     
@@ -53,25 +51,31 @@ class MCTS:
         "Choose the best successor of node. (Choose a move in the game)"
         
         def ucb1tuned(n):
-            p, N = self._score(n)
+            p, N = self.score(n), self.N[n]
             if not N:
                 return float('-inf')
             tmp = math.sqrt(self.ce * math.log(self.N[node]) / N)
             return p - tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
         
-        def coverage(n):
-            cov = self.N[n] / self.M[n]
-            if not self.M[n]:
-                return float('-inf')
-            tmp = math.sqrt(self.ce * math.log(self.M[node]) / self.M[n])
-            return cov - tmp * math.sqrt(min(0.25, cov * (1 - cov) + tmp))
-        
-        if all(self._score(n)[0] < self.tau for n in self.children[node]):
+        if all(self.score(n) < self.tau for n in self.children[node]):
             return [max(self.children[node], key=ucb1tuned)]
-
-        bests = {child for child in self.children[node] 
-                    if self._score(child)[0] > self.tau}
-        return sorted(bests, key=coverage, reverse=True)
+        
+        self.anchor_found = True
+        best = max(self.children[node], key=self.score)
+        return self._best_anchors(best)
+        
+    def _best_anchors(self, node):
+        res = [node]
+        if self.ancestors is None:
+            return res        
+        while True:
+            parent = res[-1]
+            try:
+                parent = next(iter(n for n in self.ancestors[parent] 
+                                    if self.score(n) >= self.tau))
+            except StopIteration:
+                return res[::-1]
+            res.append(parent)
 
     def train(self, node):
         "Rollout the tree from `node` until error is smaller than `epsilon`"
@@ -79,14 +83,13 @@ class MCTS:
         i = 0
         while err > self.epsilon:
             i += 1
-            if not i % 10:
-                print(f'\033[1;93m Iter {i} Error {err:5.2%} \033[1;m', 
-                        end='   \r')
+            print(f'\033[1;93m Iter {i} Error {err:5.2%} \033[1;m', 
+                    end='   \r')
             self._rollout(node)
 
             if self.children[node]:
                 best = self.choose(node)[0]
-                p, N = self._score(best)
+                p, N = self.score(best), self.N[best]
                 if N:
                     tmp = math.sqrt(self.ce * math.log(self.N[node]) / N)
                     err = 2 * tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
@@ -100,11 +103,11 @@ class MCTS:
         Q, N = leaf.simulate(self.batch_size)
         self._backpropagate(path, Q, N)
 
-    def _score(self, node):
+    def score(self, node):
         "Empirical score of `node`"
         if not self.N[node]:
-            return (float('-inf'), 0)
-        return (self.Q[node] / self.N[node], self.N[node])
+            return float('-inf')
+        return self.Q[node] / self.N[node]
     
     def _select_path(self, node):
         "Find a path leading to an unexplored descendent of `node`"
@@ -133,27 +136,31 @@ class MCTS:
             for n in path:
                 self.Q[n] += Q
                 self.N[n] += N
-                self.M[n] += self.batch_size
         else:
             ancestors = {path[-1]}
             for n in path:
                 ancestors.update(self.ancestors[n])
             for n in ancestors:
                 self.Q[n] += Q
-                self.N[n] += N 
-                self.M[n] += self.batch_size
+                self.N[n] += N
 
     def _select(self, node):
         "Select a child of node, balancing exploration & exploitation"
         
         def ucb1tuned(n):
-            p, N = self._score(n)
+            p, N = self.score(n), self.N[n]
             if not N:
                 return float('inf')
             tmp = math.sqrt(self.ce* math.log(self.N[node]) / N)
             return p + tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
         
         return max(self.children[node], key=ucb1tuned)
+
+    def log(self, stl):
+        q, n = self.Q[stl], self.N[stl]
+        if not n:
+            return f'{stl} ({q}/{n})'
+        return f'{stl} ({q}/{n}={q/n:5.2%})'
 
     def visualize(self):
         from visual import Visual

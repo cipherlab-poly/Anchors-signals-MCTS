@@ -1,7 +1,7 @@
 import numpy as np
 from stl import Simulator
 
-class AutoTransmission5(Simulator):
+class AutoTransmission6(Simulator):
     def __init__(self, throttles, thetas, tdelta, params={}):
         """
         Parameters
@@ -144,10 +144,10 @@ class AutoTransmission5(Simulator):
     def simulate(self):
         noise = np.random.uniform(-0.4, 0.4, self.slen)
         throttles = np.clip(np.array(self.throttles) + noise, 0.0, 1.0)
-        at = AutoTransmission5(throttles, self.thetas, self.tdelta)
+        at = AutoTransmission6(throttles, self.thetas, self.tdelta)
         sample = at.run()
         cond1 = all(espd < 3000 for espd in at.espds) 
-        cond2 = any(vspd >= 35 for vspd in at.vspds[:int(4/self.tdelta)+1])
+        cond2 = any(vspd >= 50 for vspd in at.vspds[:int(8/self.tdelta)+1])
         return sample, int(cond1 and cond2)
 
     def plot(self):
@@ -180,16 +180,16 @@ class AutoTransmission5(Simulator):
             ax.grid()
 
 
-# To execute from root: python3 -m models.auto_transmission5
+# To execute from root: python3 -m models.auto_transmission6
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     tdelta = 2.0
     throttles = list(np.linspace(0.7, 0.4, 6)) + [0.4]*4 + [0.1]*6
     thetas = [0.]*len(throttles)
 
-    at = AutoTransmission5(throttles, thetas, tdelta)
+    at = AutoTransmission6(throttles, thetas, tdelta)
     at.plot()
     print(at.espds)
     plt.show()
-    #plt.savefig(f'demo/auto_transmission5.png')
+    #plt.savefig(f'demo/auto_transmission6.png')
     

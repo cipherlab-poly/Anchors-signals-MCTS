@@ -136,3 +136,33 @@ class KL_LUCB:
             else:
                 um = qm
         return lm
+
+"""
+from kl_lucb import KL_LUCB
+beam_width = params.get('beam_width', 1)
+delta = params.get('delta', 0.01)
+tree = KL_LUCB(batch_size=batch_size, beam_width=beam_width, 
+                delta=delta, epsilon=epsilon)
+cands = {stl}
+move = 0
+interrupted = False
+while not interrupted:
+    move += 1
+    logging.info(f'Move {move}. Choosing best primitive...')
+    cands = tree.get_cands(cands)    
+    try:
+        tree.train(cands)
+    except KeyboardInterrupt:
+        logging.warning('Interrupted')
+        interrupted = True
+    stls = tree.choose(cands)
+    for stl in stls:
+        q, n = tree.Q[stl], tree.N[stl]
+        lb, ub = tree.LB[stl], tree.UB[stl]
+        logging.info(f'{stl} [{lb:5.2%}, {q}/{n}={q/n:5.2%}, {ub:5.2%}]')
+    stl = stls[0]
+    if tree.Q[stl] / tree.N[stl] > tau or len(stl) >= max_depth:
+        return
+    else:
+        cands = stls
+"""

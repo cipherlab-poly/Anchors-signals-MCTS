@@ -2,6 +2,7 @@ import numpy as np
 np.set_printoptions(precision=2, suppress=True)
 np.random.seed(42)
 
+from mcts import MCTS
 from stl import STL, PrimitiveGenerator, Simulator
 
 import logging
@@ -14,7 +15,7 @@ def thermostat(params) -> Simulator:
     tm = Thermostat(out_temp=19, exp_temp=20, latency=2, length=5)
     params['s'] = np.array([[19.53, 19.33, 19.83, 20.08, 19.37]])
     params['range'] = [(0, (19, 21, 20))]
-    params['tau'] = 0.9999
+    params['tau'] = 1.0
     return tm
 
 def acas_xu(params) -> Simulator:
@@ -29,6 +30,57 @@ def acas_xu(params) -> Simulator:
     params['range'] = [(0, (mins[i], maxes[i], 8)) for i in range(3)]
     params['range'] += [(1, list(range(5)))]
     params['tau'] = 0.95
+    params['epsilon'] = 0.015
+    params['max_depth'] = 5
+    params['past'] = True
+    return acasxu
+
+def acas_xu2(params) -> Simulator:
+    from models.acas_xu import ACAS_XU
+
+    state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
+    acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
+    acasxu.load_nnets()
+    mins = [0.0, 0.0, -np.pi]
+    maxes = [8000.0, np.pi, 0.0]
+    params['s'] = acasxu.run()
+    params['range'] = [(0, (mins[i], maxes[i], 16)) for i in range(3)]
+    params['range'] += [(1, list(range(5)))]
+    params['tau'] = 0.95
+    params['epsilon'] = 0.015
+    params['max_depth'] = 5
+    params['past'] = True
+    return acasxu
+
+def acas_xu3(params) -> Simulator:
+    from models.acas_xu import ACAS_XU
+
+    state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
+    acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
+    acasxu.load_nnets()
+    mins = [0.0, 0.0, -np.pi]
+    maxes = [8000.0, np.pi, 0.0]
+    params['s'] = acasxu.run()
+    params['range'] = [(0, (mins[i], maxes[i], 8)) for i in range(3)]
+    params['range'] += [(1, list(range(5)))]
+    params['tau'] = 0.98
+    params['epsilon'] = 0.015
+    params['max_depth'] = 5
+    params['past'] = True
+    return acasxu
+
+def acas_xu4(params) -> Simulator:
+    from models.acas_xu import ACAS_XU
+
+    state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
+    acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
+    acasxu.load_nnets()
+    mins = [0.0, 0.0, -np.pi]
+    maxes = [8000.0, np.pi, 0.0]
+    params['s'] = acasxu.run()
+    params['range'] = [(0, (mins[i], maxes[i], 16)) for i in range(3)]
+    params['range'] += [(1, list(range(5)))]
+    params['tau'] = 0.98
     params['epsilon'] = 0.015
     params['max_depth'] = 5
     params['past'] = True
@@ -78,7 +130,7 @@ def auto_transmission3(params) -> Simulator:
     params['s'] = at.run()
     params['range'] = [(0, (0, 6000, 24)), (0, (0, 160, 8))]
     params['epsilon'] = 0.02
-    params['tau'] = 0.9999
+    params['tau'] = 1.0
     return at
 
 def auto_transmission4(params) -> Simulator:
@@ -92,22 +144,51 @@ def auto_transmission4(params) -> Simulator:
     params['s'] = at.run()
     params['range'] = [(0, (0, 5000, 5)), (0, (0, 160, 8))]
     params['epsilon'] = 0.02
-    params['tau'] = 0.9999
+    params['tau'] = 1.0
     return at
 
 def auto_transmission5(params={}) -> Simulator:
     from models.auto_transmission5 import AutoTransmission5
     
     tdelta = 2.0
-    throttles = list(np.linspace(0.7, 0.4, 6)) + [0.4]*4 + [0.1]*6
+    throttles = list(np.linspace(0.7, 0.4, 6)) + [0.4]*6 + [0.1]*6
     thetas = [0.]*len(throttles)
 
     at = AutoTransmission5(throttles, thetas, tdelta)
     params['s'] = at.run()
     params['range'] = [(0, (0, 4000, 4)), (0, (10, 70, 12))]
-    params['tau'] = 0.9999
+    params['tau'] = 1.0
     params['epsilon'] = 0.02
     return at
+
+def auto_transmission6(params={}) -> Simulator:
+    from models.auto_transmission6 import AutoTransmission6
+    
+    tdelta = 2.0
+    throttles = list(np.linspace(0.7, 0.4, 6)) + [0.4]*4 + [0.1]*6
+    thetas = [0.]*len(throttles)
+
+    at = AutoTransmission6(throttles, thetas, tdelta)
+    params['s'] = at.run()
+    params['range'] = [(0, (0, 4000, 4)), (0, (10, 70, 12))]
+    params['tau'] = 1.0
+    params['epsilon'] = 0.02
+    return at
+
+def auto_transmission7(params={}) -> Simulator:
+    from models.auto_transmission7 import AutoTransmission7
+    
+    tdelta = 2.0
+    throttles = list(np.linspace(0.7, 0.4, 6)) + [0.4]*4 + [0.1]*6
+    thetas = [0.]*len(throttles)
+
+    at = AutoTransmission7(throttles, thetas, tdelta)
+    params['s'] = at.run()
+    params['range'] = [(0, (0, 4000, 4)), (0, (10, 70, 12))]
+    params['tau'] = 1.0
+    params['epsilon'] = 0.02
+    return at
+
 
 """
 Should be defined in params
@@ -132,7 +213,7 @@ epsilon: float
     maximum tolerated error 
 """
 
-def main(simulator, params={}, method='MCTS'):
+def run(simulator, params={}):
     simulator = eval(simulator)(params)
     if not {'s', 'range'}.issubset(params.keys()):
         logging.error('something undefined in params among {s, range}')
@@ -152,76 +233,72 @@ def main(simulator, params={}, method='MCTS'):
     nb = stl.init(primitives, simulator)
     logging.info(f'Done. {nb} primitives.')
 
-    if method == 'MCTS':
-        from mcts import MCTS
-        max_depth = params.get('max_depth', 4)
-        tree = MCTS(max_depth=max_depth, epsilon=epsilon, tau=tau)
-        move = 0
-        interrupted = False
-        while not interrupted:
-            move += 1
-            logging.info(f'Move {move}. Choosing best primitive...')
-            tree.set_batch_size(move * batch_size)
-            try:
-                nb = tree.train(stl)
-                logging.info(f'{nb} rollouts to reach error {epsilon:5.2%}')
-            except KeyboardInterrupt:
-                logging.warning('Interrupted')
-                interrupted = True
-            stls = tree.choose(stl)
-            for stl in stls:
-                q, n, m = tree.Q[stl], tree.N[stl], tree.M[stl]
-                if n == 0 or m == 0:
-                    logging.info(f'{stl} ({q}/{n}) ({n}/{m})')
-                    return
-                logging.info(f'{stl} ({q}/{n}={q/n:5.2%}) ({n}/{m}={n/m:5.2%})')
-            if len(stls) > 1 or len(stl) >= max_depth:
-                return
-            tree.clean(stl, stls[0])
-            stl = stls[0]
-    else:
-        from kl_lucb import KL_LUCB
-        beam_width = params.get('beam_width', 1)
-        delta = params.get('delta', 0.01)
-        tree = KL_LUCB(batch_size=batch_size, beam_width=beam_width, 
-                        delta=delta, epsilon=epsilon)
-        cands = {stl}
-        move = 0
-        interrupted = False
-        while not interrupted:
-            move += 1
-            logging.info(f'Move {move}. Choosing best primitive...')
-            cands = tree.get_cands(cands)    
-            try:
-                tree.train(cands)
-            except KeyboardInterrupt:
-                logging.warning('Interrupted')
-                interrupted = True
-            stls = tree.choose(cands)
-            for stl in stls:
-                q, n = tree.Q[stl], tree.N[stl]
-                lb, ub = tree.LB[stl], tree.UB[stl]
-                logging.info(f'{stl} [{lb:5.2%}, {q}/{n}={q/n:5.2%}, {ub:5.2%}]')
-            stl = stls[0]
-            if tree.Q[stl] / tree.N[stl] > tau or len(stl) >= max_depth:
-                return
-            else:
-                cands = stls
+    max_depth = params.get('max_depth', 4)
+    tree = MCTS(max_depth=max_depth, epsilon=epsilon, tau=tau)
+    move = 0
+    interrupted = False
+    while not interrupted:
+        move += 1
+        logging.info(f'Move {move}. Choosing best primitive...')
+        tree.set_batch_size(move * batch_size)
+        try:
+            nb = tree.train(stl)
+            logging.info(f'{nb} rollouts to reach error {epsilon:5.2%}')
+        except KeyboardInterrupt:
+            logging.warning('Interrupted')
+            interrupted = True
+        stls = tree.choose(stl)
+        for stl in stls:
+            logging.info(tree.log(stl))
+        if tree.anchor_found or len(stl) >= max_depth:
+            return
+        tree.clean(stl, stls[0])
+        stl = stls[0]
+
+
+def set_logger(simulator=None):
+    formatter = logging.Formatter(
+        fmt='%(asctime)s %(message)s', datefmt='%H:%M:%S')
+    
+    if not simulator:
+        os.makedirs('log', exist_ok=True)
+        logger = logging.getLogger()
+        streamhandler = logging.StreamHandler(sys.stdout)
+        streamhandler.setFormatter(formatter)
+        logger.addHandler(streamhandler)
+        logger.setLevel(logging.INFO)
+        return
+    
+    now = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+    filehandler = logging.FileHandler(f'log/{now}-{simulator}.log', 'a')
+    filehandler.setFormatter(formatter)
+    
+    logger = logging.getLogger()
+    for handler in logger.handlers[:]:
+        if isinstance(handler, logging.FileHandler):
+            logger.removeHandler(handler)
+    logger.addHandler(filehandler)
+
+
+def main():
+    set_logger()
+    simulators = []
+    #simulators.append('thermostat')
+    simulators.append('acas_xu')
+    simulators.append('acas_xu2')
+    simulators.append('acas_xu3')
+    simulators.append('acas_xu4')
+    simulators.append('auto_transmission')
+    #simulators.append('auto_transmission2')
+    simulators.append('auto_transmission3')
+    simulators.append('auto_transmission4')
+    simulators.append('auto_transmission5')
+    #simulators.append('auto_transmission6')
+    simulators.append('auto_transmission7')
+    for simulator in simulators:
+        set_logger(simulator)
+        run(simulator)
+
 
 if __name__ == '__main__':
-    simulator = 'thermostat'
-    #simulator = 'acas_xu'
-    #simulator = 'auto_transmission'
-    #simulator = 'auto_transmission2'
-    #simulator = 'auto_transmission3'
-    #simulator = 'auto_transmission4'
-    #simulator = 'auto_transmission5'
-
-    now = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
-    os.makedirs('log', exist_ok=True)
-    logging.basicConfig(filename=f'log/{now}-{simulator}.log', 
-                        level=logging.INFO, 
-                        format='%(asctime)s %(message)s',
-                        datefmt='%H:%M:%S')
-    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
-    main(simulator)
+    main()
