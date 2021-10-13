@@ -27,60 +27,9 @@ def acas_xu(params) -> Simulator:
     mins = [0.0, 0.0, -np.pi]
     maxes = [8000.0, np.pi, 0.0]
     params['s'] = acasxu.run()
-    params['range'] = [(0, (mins[i], maxes[i], 8)) for i in range(3)]
-    params['range'] += [(1, list(range(5)))]
+    params['range'] = [(0, (0, 8000, 16)), (0, (0, np.pi, 8))]
+    params['range'] += [(0, (-np.pi, 0, 8)), (1, list(range(5)))]
     params['tau'] = 0.95
-    params['epsilon'] = 0.015
-    params['max_depth'] = 5
-    params['past'] = True
-    return acasxu
-
-def acas_xu2(params) -> Simulator:
-    from models.acas_xu import ACAS_XU
-
-    state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
-    acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
-    acasxu.load_nnets()
-    mins = [0.0, 0.0, -np.pi]
-    maxes = [8000.0, np.pi, 0.0]
-    params['s'] = acasxu.run()
-    params['range'] = [(0, (mins[i], maxes[i], 16)) for i in range(3)]
-    params['range'] += [(1, list(range(5)))]
-    params['tau'] = 0.95
-    params['epsilon'] = 0.015
-    params['max_depth'] = 5
-    params['past'] = True
-    return acasxu
-
-def acas_xu3(params) -> Simulator:
-    from models.acas_xu import ACAS_XU
-
-    state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
-    acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
-    acasxu.load_nnets()
-    mins = [0.0, 0.0, -np.pi]
-    maxes = [8000.0, np.pi, 0.0]
-    params['s'] = acasxu.run()
-    params['range'] = [(0, (mins[i], maxes[i], 8)) for i in range(3)]
-    params['range'] += [(1, list(range(5)))]
-    params['tau'] = 0.98
-    params['epsilon'] = 0.015
-    params['max_depth'] = 5
-    params['past'] = True
-    return acasxu
-
-def acas_xu4(params) -> Simulator:
-    from models.acas_xu import ACAS_XU
-
-    state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
-    acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
-    acasxu.load_nnets()
-    mins = [0.0, 0.0, -np.pi]
-    maxes = [8000.0, np.pi, 0.0]
-    params['s'] = acasxu.run()
-    params['range'] = [(0, (mins[i], maxes[i], 16)) for i in range(3)]
-    params['range'] += [(1, list(range(5)))]
-    params['tau'] = 0.98
     params['epsilon'] = 0.015
     params['max_depth'] = 5
     params['past'] = True
@@ -247,13 +196,12 @@ def run(simulator, params={}):
         except KeyboardInterrupt:
             logging.warning('Interrupted')
             interrupted = True
-        stls = tree.choose(stl)
-        for stl in stls:
-            logging.info(tree.log(stl))
-        if tree.anchor_found or len(stl) >= max_depth:
+        new_stl = tree.choose(stl)
+        logging.info(tree.log(new_stl))
+        if tree.anchor_found or len(new_stl) >= max_depth:
             return
-        tree.clean(stl, stls[0])
-        stl = stls[0]
+        tree.clean(stl, new_stl)
+        stl = new_stl
 
 
 def set_logger(simulator=None):
@@ -284,17 +232,14 @@ def main():
     set_logger()
     simulators = []
     #simulators.append('thermostat')
-    simulators.append('acas_xu')
-    simulators.append('acas_xu2')
-    simulators.append('acas_xu3')
-    simulators.append('acas_xu4')
+    #simulators.append('acas_xu')
     simulators.append('auto_transmission')
     #simulators.append('auto_transmission2')
-    simulators.append('auto_transmission3')
-    simulators.append('auto_transmission4')
-    simulators.append('auto_transmission5')
+    #simulators.append('auto_transmission3')
+    #simulators.append('auto_transmission4')
+    #simulators.append('auto_transmission5')
     #simulators.append('auto_transmission6')
-    simulators.append('auto_transmission7')
+    #simulators.append('auto_transmission7')
     for simulator in simulators:
         set_logger(simulator)
         run(simulator)

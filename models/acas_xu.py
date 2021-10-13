@@ -41,7 +41,7 @@ class ACAS_XU(Simulator):
         self.v_own = self.norm_v_own * np.array([np.sin(psi0), np.cos(psi0)])
         self.a_prev = 4
         self.a_actual = 4
-        self.sample = np.zeros((3, 4))
+        self.sample = np.zeros((3, slen))
 
     def load_nnets(self):
         for a_prev in range(5):

@@ -139,12 +139,10 @@ class AutoTransmission(Simulator):
     def run(self):
         for _ in range(self.slen):
             self.update()
-        return np.vstack([self.espds, self.vspds, self.throttles, self.gears])[:, -4:]
+        return np.vstack([self.espds, self.vspds, self.throttles, self.gears])[:, 1:]
 
     def simulate(self):
         throttles = list(np.random.random(self.slen))
-        #noise = np.random.uniform(-0.5, 0.5, self.slen)
-        #throttles = np.clip(np.array(self.throttles) + noise, 0.0, 1.0)
         at = AutoTransmission(throttles, self.thetas, self.tdelta)
         sample = at.run()
         return sample, at.gear == 3

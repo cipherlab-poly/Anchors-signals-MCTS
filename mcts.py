@@ -48,7 +48,7 @@ class MCTS:
         self.children.pop(parent, None)
     
     def choose(self, node):
-        "Choose the best successor of node. (Choose a move in the game)"
+        "Choose the best successor of node (choose a move in the game)"
         
         def ucb1tuned(n):
             p, N = self.score(n), self.N[n]
@@ -58,24 +58,22 @@ class MCTS:
             return p - tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
         
         if all(self.score(n) < self.tau for n in self.children[node]):
-            return [max(self.children[node], key=ucb1tuned)]
+            return max(self.children[node], key=ucb1tuned)
         
         self.anchor_found = True
-        best = max(self.children[node], key=self.score)
-        return self._best_anchors(best)
+        best = max(self.children[node], key=ucb1tuned)
+        return self._best_anchor(best)
         
-    def _best_anchors(self, node):
-        res = [node]
+    def _best_anchor(self, node):
         if self.ancestors is None:
-            return res        
+            return node  
         while True:
-            parent = res[-1]
+            parent = node
             try:
                 parent = next(iter(n for n in self.ancestors[parent] 
                                     if self.score(n) >= self.tau))
             except StopIteration:
-                return res[::-1]
-            res.append(parent)
+                return parent
 
     def train(self, node):
         "Rollout the tree from `node` until error is smaller than `epsilon`"
@@ -88,7 +86,7 @@ class MCTS:
             self._rollout(node)
 
             if self.children[node]:
-                best = self.choose(node)[0]
+                best = self.choose(node)
                 p, N = self.score(best), self.N[best]
                 if N:
                     tmp = math.sqrt(self.ce * math.log(self.N[node]) / N)

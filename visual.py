@@ -31,10 +31,9 @@ class Visual:
     def _node_label(self, node):
         q = self.tree.Q[node]
         n = self.tree.N[node]
-        m = self.tree.M[node]
         if n:
-            return f'\np={q}/{n}={q/n:5.2%}\nc={n}/{m}={n/m:5.2%}'
-        return f'\np=0/0\nc=0/{m}'
+            return f'\n{q}/{n}={q/n:5.2%}'
+        return f'\n0/0'
     
     def _layout(self, prog):
         auxG = nx.DiGraph(self.G)
@@ -50,17 +49,17 @@ class Visual:
 if __name__ == '__main__':
     import numpy as np
     from mcts import MCTS
-    from stl import STL, PrimitiveGenerator, Simulator
+    from stl import STL, PrimitiveGenerator
     from models.thermostat import Thermostat
     
     simulator   = Thermostat(out_temp=19, exp_temp=20, latency=2, length=5)
     s           = np.array([[19, 21]])
     srange      = [(0, (18, 22, 4))]
-    tau         = 0.9999
+    tau         = 1.0
     batch_size  = 128
     tau         = 0.95
     rho         = 0.01
-    epsilon     = 0.3
+    epsilon     = 0.01
     past        = False
     max_depth   = 2
 
@@ -68,13 +67,7 @@ if __name__ == '__main__':
     primitives = PrimitiveGenerator(s, srange, rho, past).generate()    
     nb = stl.init(primitives, simulator)
     tree = MCTS(max_depth=max_depth, epsilon=epsilon, tau=tau)
-    move = 0
-    while True:
-        move += 1
-        tree.set_batch_size(batch_size)
-        nb = tree.train(stl)
-        stls = tree.choose(stl)
-        if len(stls) > 1 or len(stl) >= max_depth:
-            break
-        stl = stls[0]
+    tree.set_batch_size(batch_size)
+    for _ in range(200):
+        tree._rollout(stl)
     tree.visualize()

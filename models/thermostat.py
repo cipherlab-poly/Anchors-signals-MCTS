@@ -25,7 +25,7 @@ class Thermostat(Simulator):
             # on if in_temp below exp_temp for at least *latency*
             self.on = self._black_box(np.array([self.temps]))
             self.ons.append(self.on)
-        return np.array([self.temps])
+        return np.array([self.temps])#[-2:]])
     
     def _black_box(self, sample):
         "on if `in_temp` below `exp_temp` for at least `latency`"
