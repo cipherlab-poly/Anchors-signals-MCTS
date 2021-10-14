@@ -28,9 +28,26 @@ def acas_xu(params) -> Simulator:
     maxes = [8000.0, np.pi, 0.0]
     params['s'] = acasxu.run()
     params['range'] = [(0, (0, 8000, 16)), (0, (0, np.pi, 8))]
-    params['range'] += [(0, (-np.pi, 0, 8)), (1, list(range(5)))]
+    params['range'] += [(0, (-np.pi, 0, 8))]#, (1, list(range(5)))]
     params['tau'] = 0.96
-    params['epsilon'] = 0.015
+    params['epsilon'] = 0.02
+    params['max_depth'] = 6
+    params['past'] = True
+    return acasxu
+
+def acas_xu2(params) -> Simulator:
+    from models.acas_xu import ACAS_XU
+
+    state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
+    acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
+    acasxu.load_nnets()
+    mins = [0.0, 0.0, -np.pi]
+    maxes = [8000.0, np.pi, 0.0]
+    params['s'] = acasxu.run()
+    params['range'] = [(0, (0, 8000, 16)), (0, (0, np.pi, 8))]
+    params['range'] += [(0, (-np.pi, 0, 8))]#, (1, list(range(5)))]
+    params['tau'] = 0.96
+    params['epsilon'] = 0.02
     params['max_depth'] = 5
     params['past'] = True
     return acasxu
@@ -45,9 +62,9 @@ def auto_transmission(params) -> Simulator:
     thetas = [0.] * len(throttles)
     at = AutoTransmission(throttles, thetas, tdelta)
     params['s'] = at.run()
-    params['range'] = [(0, (0, 3000, 3)), (0, (0, 80, 8)), (0, (0, 1, 10))]
+    params['range'] = [(0, (0, 3000, 6)), (0, (0, 80, 16)), (0, (0, 1, 10))]
     params['epsilon'] = 0.02
-    params['tau'] = 0.98
+    params['tau'] = 0.96
     params['past'] = True
     return at
 
@@ -226,14 +243,15 @@ def main():
     set_logger()
     simulators = []
     #simulators.append('thermostat')
-    simulators.append('acas_xu')
-    #simulators.append('auto_transmission')
     #simulators.append('auto_transmission2')
-    #simulators.append('auto_transmission3')
-    #simulators.append('auto_transmission4')
-    #simulators.append('auto_transmission5')
-    #simulators.append('auto_transmission6')
-    #simulators.append('auto_transmission7')
+    simulators.append('auto_transmission3')
+    simulators.append('auto_transmission4')
+    simulators.append('auto_transmission5')
+    simulators.append('auto_transmission6')
+    simulators.append('auto_transmission7')
+    simulators.append('acas_xu2')
+    simulators.append('acas_xu')
+    simulators.append('auto_transmission')
     for simulator in simulators:
         set_logger(simulator)
         run(simulator)
