@@ -57,21 +57,20 @@ class MCTS:
             tmp = math.sqrt(self.ce * math.log(self.N[node]) / N)
             return p - tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
         
-        if all(self.score(n) < self.tau for n in self.children[node]):
-            return max(self.children[node], key=ucb1tuned)
-        
-        self.anchor_found = True
         best = max(self.children[node], key=ucb1tuned)
+        if self.score(best) < self.tau:
+            return best
         return self._best_anchor(best)
         
     def _best_anchor(self, node):
+        self.anchor_found = True
         if self.ancestors is None:
             return node  
         while True:
             parent = node
             try:
                 parent = next(iter(n for n in self.ancestors[parent] 
-                                    if self.score(n) >= self.tau))
+                            if self.score(n) >= self.tau))
             except StopIteration:
                 return parent
 

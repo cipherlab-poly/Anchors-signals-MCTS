@@ -29,7 +29,7 @@ def acas_xu(params) -> Simulator:
     params['s'] = acasxu.run()
     params['range'] = [(0, (0, 8000, 16)), (0, (0, np.pi, 8))]
     params['range'] += [(0, (-np.pi, 0, 8)), (1, list(range(5)))]
-    params['tau'] = 0.95
+    params['tau'] = 0.96
     params['epsilon'] = 0.015
     params['max_depth'] = 5
     params['past'] = True
@@ -45,10 +45,9 @@ def auto_transmission(params) -> Simulator:
     thetas = [0.] * len(throttles)
     at = AutoTransmission(throttles, thetas, tdelta)
     params['s'] = at.run()
-    params['range'] = [(0, (0, 5000, 5)), (0, (0, 80, 16))]
-    params['range'] += [(0, (0, 1, 10)), (1, list(range(1, 5)))]
-    params['epsilon'] = 0.015
-    params['tau'] = 0.99
+    params['range'] = [(0, (0, 3000, 3)), (0, (0, 80, 8)), (0, (0, 1, 10))]
+    params['epsilon'] = 0.02
+    params['tau'] = 0.98
     params['past'] = True
     return at
 
@@ -174,6 +173,7 @@ def run(simulator, params={}):
     rho         = params.get('rho',         0.01)
     epsilon     = params.get('epsilon',     0.01)
     past        = params.get('past',        False)
+    max_depth   = params.get('max_depth',   4)
 
     logging.info(f'Signal being analyzed:\n{s}')
     stl = STL()
@@ -182,20 +182,14 @@ def run(simulator, params={}):
     nb = stl.init(primitives, simulator)
     logging.info(f'Done. {nb} primitives.')
 
-    max_depth = params.get('max_depth', 4)
     tree = MCTS(max_depth=max_depth, epsilon=epsilon, tau=tau)
     move = 0
-    interrupted = False
-    while not interrupted:
+    while True:
         move += 1
         logging.info(f'Move {move}. Choosing best primitive...')
         tree.set_batch_size(move * batch_size)
-        try:
-            nb = tree.train(stl)
-            logging.info(f'{nb} rollouts to reach error {epsilon:5.2%}')
-        except KeyboardInterrupt:
-            logging.warning('Interrupted')
-            interrupted = True
+        nb = tree.train(stl)
+        logging.info(f'{nb} rollouts to reach error {epsilon:5.2%}')
         new_stl = tree.choose(stl)
         logging.info(tree.log(new_stl))
         if tree.anchor_found or len(new_stl) >= max_depth:
@@ -232,8 +226,8 @@ def main():
     set_logger()
     simulators = []
     #simulators.append('thermostat')
-    #simulators.append('acas_xu')
-    simulators.append('auto_transmission')
+    simulators.append('acas_xu')
+    #simulators.append('auto_transmission')
     #simulators.append('auto_transmission2')
     #simulators.append('auto_transmission3')
     #simulators.append('auto_transmission4')
