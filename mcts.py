@@ -33,7 +33,7 @@ class MCTS:
         self.batch_size = None
 
         # Found an anchor
-        self.anchor_found = False
+        self.finished = False
 
     def set_batch_size(self, batch_size):
         self.batch_size = batch_size
@@ -63,35 +63,39 @@ class MCTS:
         return self._best_anchor(best)
         
     def _best_anchor(self, node):
-        self.anchor_found = True
+        self.finished = True
         if self.ancestors is None:
             return node  
+        parent = node
         while True:
-            parent = node
             try:
                 parent = next(iter(n for n in self.ancestors[parent] 
                             if self.score(n) >= self.tau))
             except StopIteration:
                 return parent
 
-    def train(self, node):
+    def train(self, node, max_iter=25000):
         "Rollout the tree from `node` until error is smaller than `epsilon`"
         err = 1.0
         i = 0
+        best = None
         while err > self.epsilon:
+            if i > max_iter:
+                self.finished = True
+                break
             i += 1
-            print(f'\033[1;93m Iter {i} Error {err:5.2%} \033[1;m', 
+            print(f'\033[1;93m Iter {i} Error {err:5.2%} Best {best} \033[1;m', 
                     end='   \r')
             self._rollout(node)
 
             if self.children[node]:
-                best = self.choose(node)
+                best = self._select(node)
                 p, N = self.score(best), self.N[best]
                 if N:
                     tmp = math.sqrt(self.ce * math.log(self.N[node]) / N)
-                    err = 2 * tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
+                    err = tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
                     err = min(err, 1.0)
-        return i
+        return i, err
 
     def _rollout(self, node):
         "Make the tree one layer better (train for one iteration)"

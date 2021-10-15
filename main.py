@@ -29,8 +29,8 @@ def acas_xu(params) -> Simulator:
     params['s'] = acasxu.run()
     params['range'] = [(0, (0, 8000, 16)), (0, (0, np.pi, 8))]
     params['range'] += [(0, (-np.pi, 0, 8))]#, (1, list(range(5)))]
-    params['tau'] = 0.96
-    params['epsilon'] = 0.02
+    params['tau'] = 0.95
+    params['epsilon'] = 0.008
     params['max_depth'] = 6
     params['past'] = True
     return acasxu
@@ -46,8 +46,8 @@ def acas_xu2(params) -> Simulator:
     params['s'] = acasxu.run()
     params['range'] = [(0, (0, 8000, 16)), (0, (0, np.pi, 8))]
     params['range'] += [(0, (-np.pi, 0, 8))]#, (1, list(range(5)))]
-    params['tau'] = 0.96
-    params['epsilon'] = 0.02
+    params['tau'] = 0.95
+    params['epsilon'] = 0.008
     params['max_depth'] = 5
     params['past'] = True
     return acasxu
@@ -63,7 +63,6 @@ def auto_transmission(params) -> Simulator:
     at = AutoTransmission(throttles, thetas, tdelta)
     params['s'] = at.run()
     params['range'] = [(0, (0, 3000, 6)), (0, (0, 80, 16)), (0, (0, 1, 10))]
-    params['epsilon'] = 0.02
     params['tau'] = 0.96
     params['past'] = True
     return at
@@ -79,7 +78,6 @@ def auto_transmission2(params) -> Simulator:
     at = AutoTransmission2(throttles, thetas, tdelta)
     params['s'] = at.run()
     params['range'] = [(0, (0, 200, 20)), (0, (0, 1, 10)), (1, [1, 2, 3, 4])]
-    params['epsilon'] = 0.015
     params['tau'] = 0.98
     params['past'] = True
     return at
@@ -94,7 +92,6 @@ def auto_transmission3(params) -> Simulator:
     at = AutoTransmission3(throttles, thetas, tdelta)
     params['s'] = at.run()
     params['range'] = [(0, (0, 6000, 24)), (0, (0, 160, 8))]
-    params['epsilon'] = 0.02
     params['tau'] = 1.0
     return at
 
@@ -108,7 +105,6 @@ def auto_transmission4(params) -> Simulator:
     at = AutoTransmission4(throttles, thetas, tdelta)
     params['s'] = at.run()
     params['range'] = [(0, (0, 5000, 5)), (0, (0, 160, 8))]
-    params['epsilon'] = 0.02
     params['tau'] = 1.0
     return at
 
@@ -116,14 +112,13 @@ def auto_transmission5(params={}) -> Simulator:
     from models.auto_transmission5 import AutoTransmission5
     
     tdelta = 2.0
-    throttles = list(np.linspace(0.7, 0.4, 6)) + [0.4]*6 + [0.1]*6
+    throttles = list(np.linspace(0.7, 0.4, 6)) + [0.4]*4 + [0.1]*6
     thetas = [0.]*len(throttles)
 
     at = AutoTransmission5(throttles, thetas, tdelta)
     params['s'] = at.run()
     params['range'] = [(0, (0, 4000, 4)), (0, (10, 70, 12))]
     params['tau'] = 1.0
-    params['epsilon'] = 0.02
     return at
 
 def auto_transmission6(params={}) -> Simulator:
@@ -137,7 +132,6 @@ def auto_transmission6(params={}) -> Simulator:
     params['s'] = at.run()
     params['range'] = [(0, (0, 4000, 4)), (0, (10, 70, 12))]
     params['tau'] = 1.0
-    params['epsilon'] = 0.02
     return at
 
 def auto_transmission7(params={}) -> Simulator:
@@ -151,7 +145,6 @@ def auto_transmission7(params={}) -> Simulator:
     params['s'] = at.run()
     params['range'] = [(0, (0, 4000, 4)), (0, (10, 70, 12))]
     params['tau'] = 1.0
-    params['epsilon'] = 0.02
     return at
 
 
@@ -185,14 +178,20 @@ def run(simulator, params={}):
         return
     s           = params.get('s',           None)
     srange      = params.get('range',       None)
-    batch_size  = params.get('batch_size',  128 )
     tau         = params.get('tau',         0.95)
     rho         = params.get('rho',         0.01)
-    epsilon     = params.get('epsilon',     0.01)
+    epsilon     = params.get('epsilon',     0.0075)
     past        = params.get('past',        False)
+    batch_size  = params.get('batch_size',  256 )
     max_depth   = params.get('max_depth',   4)
 
     logging.info(f'Signal being analyzed:\n{s}')
+    logging.info(f'range = {srange}')
+    logging.info(f'tau = {tau}')
+    logging.info(f'rho = {rho}')
+    logging.info(f'epsilon = {epsilon}')
+    logging.info(f'batch_size = {batch_size}')
+    logging.info(f'max_depth = {max_depth}')
     stl = STL()
     primitives = PrimitiveGenerator(s, srange, rho, past).generate()
     logging.info('Initializing primitives...')
@@ -205,11 +204,11 @@ def run(simulator, params={}):
         move += 1
         logging.info(f'Move {move}. Choosing best primitive...')
         tree.set_batch_size(move * batch_size)
-        nb = tree.train(stl)
-        logging.info(f'{nb} rollouts to reach error {epsilon:5.2%}')
+        nb, err = tree.train(stl)
+        logging.info(f'{nb} rollouts to reach error {err:5.2%}')
         new_stl = tree.choose(stl)
         logging.info(tree.log(new_stl))
-        if tree.anchor_found or len(new_stl) >= max_depth:
+        if tree.finished or len(new_stl) >= max_depth:
             return
         tree.clean(stl, new_stl)
         stl = new_stl
@@ -244,14 +243,14 @@ def main():
     simulators = []
     #simulators.append('thermostat')
     #simulators.append('auto_transmission2')
-    simulators.append('auto_transmission3')
-    simulators.append('auto_transmission4')
+    #simulators.append('auto_transmission3')
+    #simulators.append('auto_transmission4')
     simulators.append('auto_transmission5')
     simulators.append('auto_transmission6')
     simulators.append('auto_transmission7')
-    simulators.append('acas_xu2')
-    simulators.append('acas_xu')
     simulators.append('auto_transmission')
+    simulators.append('acas_xu')
+    simulators.append('acas_xu2')
     for simulator in simulators:
         set_logger(simulator)
         run(simulator)

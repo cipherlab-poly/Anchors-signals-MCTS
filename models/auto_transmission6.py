@@ -136,7 +136,7 @@ class AutoTransmission6(Simulator):
         self.shift_gear()
         self.clock += 1
 
-    def run(self, nb=5):
+    def run(self):
         for _ in range(self.slen):
             self.update()
         return np.vstack([self.espds, self.vspds])

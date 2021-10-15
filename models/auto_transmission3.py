@@ -142,8 +142,7 @@ class AutoTransmission3(Simulator):
         return np.vstack([self.espds, self.vspds])
 
     def simulate(self):
-        noise = np.random.uniform(-0.4, 0.4, self.slen)
-        throttles = np.clip(np.array(self.throttles) + noise, 0.0, 1.0)
+        throttles = list(np.random.random(self.slen))
         at = AutoTransmission3(throttles, self.thetas, self.tdelta)
         sample = at.run()
         score = int(any(espd >= 4750 for espd in at.espds[:int(10/self.tdelta)+1]))

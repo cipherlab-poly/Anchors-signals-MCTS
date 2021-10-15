@@ -136,14 +136,13 @@ class AutoTransmission4(Simulator):
         self.shift_gear()
         self.clock += 1
 
-    def run(self, nb=5):
+    def run(self):
         for _ in range(self.slen):
             self.update()
         return np.vstack([self.espds, self.vspds])
 
     def simulate(self):
-        noise = np.random.uniform(-0.4, 0.4, self.slen)
-        throttles = np.clip(np.array(self.throttles) + noise, 0.0, 1.0)
+        throttles = list(np.random.uniform(0.7, 1.0, self.slen))
         at = AutoTransmission4(throttles, self.thetas, self.tdelta)
         sample = at.run()
         score = int(any(vspd >= 120 for vspd in at.vspds))
