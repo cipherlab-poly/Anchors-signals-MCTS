@@ -30,24 +30,7 @@ def acas_xu(params) -> Simulator:
     params['range'] = [(0, (0, 8000, 16)), (0, (0, np.pi, 8))]
     params['range'] += [(0, (-np.pi, 0, 8))]#, (1, list(range(5)))]
     params['tau'] = 0.95
-    params['epsilon'] = 0.008
-    params['max_depth'] = 6
-    params['past'] = True
-    return acasxu
-
-def acas_xu2(params) -> Simulator:
-    from models.acas_xu import ACAS_XU
-
-    state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
-    acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
-    acasxu.load_nnets()
-    mins = [0.0, 0.0, -np.pi]
-    maxes = [8000.0, np.pi, 0.0]
-    params['s'] = acasxu.run()
-    params['range'] = [(0, (0, 8000, 16)), (0, (0, np.pi, 8))]
-    params['range'] += [(0, (-np.pi, 0, 8))]#, (1, list(range(5)))]
-    params['tau'] = 0.95
-    params['epsilon'] = 0.008
+    params['epsilon'] = 0.0075
     params['max_depth'] = 5
     params['past'] = True
     return acasxu
@@ -63,7 +46,8 @@ def auto_transmission(params) -> Simulator:
     at = AutoTransmission(throttles, thetas, tdelta)
     params['s'] = at.run()
     params['range'] = [(0, (0, 3000, 6)), (0, (0, 80, 16)), (0, (0, 1, 10))]
-    params['tau'] = 0.96
+    params['tau'] = 0.97
+    params['epsilon'] = 0.0075
     params['past'] = True
     return at
 
@@ -250,7 +234,6 @@ def main():
     simulators.append('auto_transmission7')
     simulators.append('auto_transmission')
     simulators.append('acas_xu')
-    simulators.append('acas_xu2')
     for simulator in simulators:
         set_logger(simulator)
         run(simulator)

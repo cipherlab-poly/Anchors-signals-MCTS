@@ -11,17 +11,14 @@ import itertools
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
-    def __init__(self, max_depth, epsilon, tau, ancestors=True):
+    def __init__(self, max_depth, epsilon, tau):
         self.max_depth  = max_depth
         self.epsilon    = epsilon
         self.tau        = tau
         
         self.children = defaultdict(set)
-        if ancestors:
-            self.ancestors = defaultdict(set)
-        else:
-            self.ancestors = None
-        
+        self.ancestors = defaultdict(set)
+    
         # Monte-Carlo (precision = Q/N)
         self.Q = defaultdict(int)
         self.N = defaultdict(int)
@@ -60,12 +57,10 @@ class MCTS:
         best = max(self.children[node], key=ucb1tuned)
         if self.score(best) < self.tau:
             return best
+        self.finished = True
         return self._best_anchor(best)
         
     def _best_anchor(self, node):
-        self.finished = True
-        if self.ancestors is None:
-            return node  
         parent = node
         while True:
             try:
@@ -74,13 +69,13 @@ class MCTS:
             except StopIteration:
                 return parent
 
-    def train(self, node, max_iter=25000):
+    def train(self, node, max_iter=40000):
         "Rollout the tree from `node` until error is smaller than `epsilon`"
         err = 1.0
         i = 0
         best = None
         while err > self.epsilon:
-            if i > max_iter:
+            if i >= max_iter:
                 self.finished = True
                 break
             i += 1
@@ -127,23 +122,17 @@ class MCTS:
     def _expand(self, node):
         "Update the `children` dict with the children of `node`"
         self.children[node] = node.get_children()
-        if self.ancestors is not None:
-            for child in self.children[node]:
-                self.ancestors[child].add(node)
+        for child in self.children[node]:
+            self.ancestors[child].add(node)
     
     def _backpropagate(self, path, Q, N):
         "Send `reward` back up to the ancestors of `node`"
-        if self.ancestors is None:
-            for n in path:
-                self.Q[n] += Q
-                self.N[n] += N
-        else:
-            ancestors = {path[-1]}
-            for n in path:
-                ancestors.update(self.ancestors[n])
-            for n in ancestors:
-                self.Q[n] += Q
-                self.N[n] += N
+        ancestors = {path[-1]}
+        for n in path:
+            ancestors.update(self.ancestors[n])
+        for n in ancestors:
+            self.Q[n] += Q
+            self.N[n] += N
 
     def _select(self, node):
         "Select a child of node, balancing exploration & exploitation"
