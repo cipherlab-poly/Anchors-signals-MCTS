@@ -30,11 +30,10 @@ class AutoTransmission(Simulator):
         self.params = params
         self.clock = 0
         self.shifts = { 
-            '2-1': (0.5, 0.9, 5, 30), '1-2': (0.25, 0.9, 10, 40),
+            '2-1': (0.5, 0.9, 5, 30),   '1-2': (0.25, 0.9, 10, 40),
             '3-2': (0.05, 0.9, 20, 50), '2-3': (0.35, 0.9, 30, 70),
             '4-3': (0.05, 0.9, 35, 80), '3-4': (0.35, 0.9, 50, 100)
         }
-
         self.espds = []
         self.vspds = []
         self.gears = []
@@ -86,11 +85,6 @@ class AutoTransmission(Simulator):
     def update(self):
         """Updates the state machine. Modified from:
             https://python-control.readthedocs.io/en/0.8.3/cruise-control.html
-
-        Parameters
-        ----------
-        noise: bool
-            add Gaussian random noise to the sensors (vehicle speed, engine speed)
         """
         m = self.params.get('m', 1600.)
         g = self.params.get('g', 9.8)
@@ -108,7 +102,7 @@ class AutoTransmission(Simulator):
         theta = self.thetas[self.clock]
         ratio = alpha[max(self.gear - 1, 0)]
         omega = ratio * self.vspd
-        torque = max(Tm * (1 - beta * (omega / omega_m - 1)**2), 0)
+        torque = max(Tm * (1 - beta * (omega / omega_m - 1) ** 2), 0)
         F = ratio * torque * throttle
         self.espd = omega * 6.65
 
@@ -139,12 +133,15 @@ class AutoTransmission(Simulator):
     def run(self):
         for _ in range(self.slen):
             self.update()
-        return np.vstack([self.espds, self.vspds, self.throttles])[:, -4:]
+        return np.vstack([self.espds, self.vspds, self.throttles, self.gears])[:, -4:]
 
     def simulate(self):
-        throttles = list(np.random.random(self.slen))
-        at = AutoTransmission(throttles, self.thetas, self.tdelta)
-        sample = at.run()
+        gear = 0
+        while gear < 4:
+            throttles = list(np.random.random(self.slen))
+            at = AutoTransmission(throttles, self.thetas, self.tdelta)
+            sample = at.run()
+            gear = at.gears[-1]
         return sample, at.gear == 3
 
     def plot(self):

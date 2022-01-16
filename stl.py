@@ -8,7 +8,7 @@ from typing import List, FrozenSet
 
 @dataclass
 class Primitive:
-    "Ex: Primitive('G', 0, 5, '>', 20) <=> G[0,5](s_i > 20)"
+    "Ex: Primitive('G', 0, 5, 0, '>', 20, 1) <=> G[0,5](s_0 > 20)"
     
     _typ: str               # 'F'(eventually) or 'G'(always)
     _a: int                 # lower bound delay
@@ -16,7 +16,7 @@ class Primitive:
     _i: int                 # component index
     _comp: str              # '<' or '>' (continuous) or '=' (discrete)
     _mu: float              # constant threshold
-    _normalize: float       # if continuous, max - min of mu
+    _normalize: float = 1.0 # if continuous, max - min of mu
                             # if discrete, 1 (to normalize robustness degree)
     
     def __post_init__(self):
@@ -201,7 +201,6 @@ class STL(object):
     # (class attributes) to be set during init
     __primitives        = []    # list of generated primitives
     __parents           = {}    # dict {child: parents} among primitives
-    __simulator         = None
 
     def __new__(cls, indices: FrozenSet[int]=frozenset()):
         for child in indices.copy():
@@ -219,16 +218,15 @@ class STL(object):
         for child in indices:
             self._indices -= STL.__parents[child]
     
-    def init(self, primitives: List[Primitive], simulator: Simulator) -> int:
+    def init(self, primitives: List[Primitive]) -> int:
         STL.__primitives = primitives
-        STL.__simulator  = simulator
         nb = len(primitives)
         STL.__parents = {child: {parent for parent in range(nb)
             if STL.__primitives[child].is_child_of(STL.__primitives[parent])} 
             for child in range(nb)}
         return nb
     
-    def _satisfied(self, s: np.ndarray) -> bool:
+    def satisfied(self, s: np.ndarray) -> bool:
         "Verify if STL is satisfied by signal `s`"
         if s is None:
             return False
@@ -245,15 +243,6 @@ class STL(object):
     def get_params(self) -> List:
         return [STL.__primitives[i].get_params() for i in self._indices]
 
-    def simulate(self, batch_size: int) -> int:
-        Q, N = 0, 0
-        for _ in range(batch_size):
-            sample, score = STL.__simulator.simulate()
-            if self._satisfied(sample):
-                Q += score 
-                N += 1
-        return Q, N
-
     def __len__(self):
         return len(self._indices)
 
@@ -265,11 +254,7 @@ class STL(object):
             return 'T'
         return '^'.join(repr(STL.__primitives[i]) for i in self._indices)
 
-
-from abc import ABC, abstractmethod
-
-class Simulator(ABC):
-    @abstractmethod
+class Simulator:
     def simulate(self):
         "Simulate a signal and return the corresponding reward"
-        return 0
+        raise NotImplementedError("Method 'simulate' not implemented")

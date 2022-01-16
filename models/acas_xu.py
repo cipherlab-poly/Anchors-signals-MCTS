@@ -1,4 +1,4 @@
-from .acasxu.nnet import NNet
+from models.acasxu.nnet import NNet
 from os.path import *
 import numpy as np
 np.set_printoptions(precision=2, suppress=True)
@@ -120,7 +120,7 @@ class ACAS_XU(Simulator):
         random[3:] = self.state0[3:]
         acasxu = ACAS_XU(random, self.tdelta, self.slen)
         sample = acasxu.run()
-        return sample, acasxu.a_actual == 2
+        return sample, acasxu.a_actual != 4
 
 # To execute from root: python3 -m models.acas_xu
 if __name__ == '__main__':

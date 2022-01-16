@@ -1,6 +1,5 @@
 import networkx as nx
 import matplotlib.pyplot as plt
-import pydot
 import itertools
 from networkx.drawing.nx_pydot import graphviz_layout
 
@@ -33,7 +32,7 @@ class Visual:
         n = self.tree.N[node]
         if n:
             return f'\n{q}/{n}={q/n:5.2%}'
-        return f'\n0/0'
+        return f'\nnot visited yet'
     
     def _layout(self, prog):
         auxG = nx.DiGraph(self.G)
@@ -56,18 +55,16 @@ if __name__ == '__main__':
     s           = np.array([[19, 21]])
     srange      = [(0, (18, 22, 4))]
     tau         = 1.0
-    batch_size  = 128
-    tau         = 0.95
     rho         = 0.01
     epsilon     = 0.01
     past        = False
     max_depth   = 2
+    batch_size  = 256
 
     stl = STL()
     primitives = PrimitiveGenerator(s, srange, rho, past).generate()    
-    nb = stl.init(primitives, simulator)
-    tree = MCTS(max_depth=max_depth, epsilon=epsilon, tau=tau)
-    tree.set_batch_size(batch_size)
+    nb = stl.init(primitives)
+    tree = MCTS(simulator, epsilon, tau, max_depth, batch_size)
     for _ in range(200):
         tree._rollout(stl)
     tree.visualize()

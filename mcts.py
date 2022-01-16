@@ -11,13 +11,16 @@ import itertools
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
-    def __init__(self, max_depth, epsilon, tau):
-        self.max_depth  = max_depth
+    def __init__(self, simulator, epsilon, tau, max_depth, batch_size):
+        self.simulator  = simulator
         self.epsilon    = epsilon
         self.tau        = tau
+        self.max_depth  = max_depth
+        self.batch_size = batch_size
         
-        self.children = defaultdict(set)
+        self.children  = defaultdict(set)
         self.ancestors = defaultdict(set)
+        self.pruned    = set()
     
         # Monte-Carlo (precision = Q/N)
         self.Q = defaultdict(int)
@@ -26,48 +29,34 @@ class MCTS:
         # Hyperparameter for ucb1tuned
         self.ce = 2
 
-        # To be increased after each move
-        self.batch_size = None
-
         # Found an anchor
         self.finished = False
-
-    def set_batch_size(self, batch_size):
-        self.batch_size = batch_size
-    
-    def clean(self, parent, child):
-        self.Q.pop(parent, None)
-        self.N.pop(parent, None)
-        for node in self.children[parent] - self.children[child] - {child}:
-            self.Q.pop(node, None)
-            self.N.pop(node, None)
-            self.children.pop(node, None)
-        self.children.pop(parent, None)
     
     def choose(self, node):
         "Choose the best successor of node (choose a move in the game)"
         
         def ucb1tuned(n):
-            p, N = self.score(n), self.N[n]
+            p, N = self.precision(n), self.N[n]
             if not N:
                 return float('-inf')
             tmp = math.sqrt(self.ce * math.log(self.N[node]) / N)
             return p - tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
         
         best = max(self.children[node], key=ucb1tuned)
-        if self.score(best) < self.tau:
+        if self.precision(best) < self.tau:
             return best
         self.finished = True
-        return self._best_anchor(best)
+        return self._best_anchors(best)
         
-    def _best_anchor(self, node):
-        parent = node
+    def _best_anchors(self, node):
+        anchors = [node]
         while True:
             try:
-                parent = next(iter(n for n in self.ancestors[parent] 
-                            if self.score(n) >= self.tau))
+                node = next(iter(n for n in self.ancestors[node] 
+                                if self.precision(n) >= self.tau))
+                anchors.append(node)
             except StopIteration:
-                return parent
+                return anchors
 
     def train(self, node, max_iter=40000):
         "Rollout the tree from `node` until error is smaller than `epsilon`"
@@ -79,31 +68,57 @@ class MCTS:
                 self.finished = True
                 break
             i += 1
-            print(f'\033[1;93m Iter {i} Error {err:5.2%} Best {best} \033[1;m', 
-                    end='   \r')
+            print(f'\033[1;93m Iter {i} Err {err:5.2%} Best {best} ' + 
+                    f'({self.precision(best):5.2%}) \033[1;m', end='   \r')
             self._rollout(node)
 
             if self.children[node]:
                 best = self._select(node)
-                p, N = self.score(best), self.N[best]
+                p, N = self.precision(best), self.N[best]
                 if N:
                     tmp = math.sqrt(self.ce * math.log(self.N[node]) / N)
                     err = tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
                     err = min(err, 1.0)
         return i, err
 
+    def precision(self, node):
+        "Empirical precision of `node`"
+        if not self.N[node]:
+            return 0.0
+        return self.Q[node] / self.N[node]
+
+    def clean(self, parent, child):
+        self.Q.pop(parent, None)
+        self.N.pop(parent, None)
+        for node in self.children[parent] - self.children[child] - {child}:
+            self.Q.pop(node, None)
+            self.N.pop(node, None)
+            self.children.pop(node, None)
+        self.children.pop(parent, None)
+    
     def _rollout(self, node):
         "Make the tree one layer better (train for one iteration)"
         path = self._select_path(node)
-        leaf = path[-1]
-        Q, N = leaf.simulate(self.batch_size)
-        self._backpropagate(path, Q, N)
 
-    def score(self, node):
-        "Empirical score of `node`"
-        if not self.N[node]:
-            return float('-inf')
-        return self.Q[node] / self.N[node]
+        # Sample in mini-batch mode
+        samples, scores = [], []
+        for _ in range(self.batch_size):
+            sample, score = self.simulator.simulate()
+            samples.append(sample)
+            scores.append(score)
+
+        # Update score for leaf
+        leaf = path[-1]
+        for i in range(self.batch_size):
+            self._update_score(leaf, samples[i], scores[i])
+        
+        # If cov(leaf) is too low then prune the leaf
+        # Else backpropagate sample and score to ancestors
+        if self.N[leaf]:
+            for i in range(self.batch_size):
+                self._backpropagate(path, samples[i], scores[i])
+        else:
+            self._prune(leaf)
     
     def _select_path(self, node):
         "Find a path leading to an unexplored descendent of `node`"
@@ -121,27 +136,42 @@ class MCTS:
 
     def _expand(self, node):
         "Update the `children` dict with the children of `node`"
-        self.children[node] = node.get_children()
+        self.children[node] = node.get_children() - self.pruned
         for child in self.children[node]:
             self.ancestors[child].add(node)
+
+    def _prune(self, node):
+        "Prune `node` from the tree"
+        self.pruned.add(node)
+        self.Q.pop(node, None)
+        self.N.pop(node, None)
+        for n in self.ancestors[node]:
+            self.children[n].remove(node)
+        self.ancestors.pop(node, None)
+        self.children.pop(node, None)
     
-    def _backpropagate(self, path, Q, N):
-        "Send `reward` back up to the ancestors of `node`"
-        ancestors = {path[-1]}
-        for n in path:
-            ancestors.update(self.ancestors[n])
-        for n in ancestors:
-            self.Q[n] += Q
-            self.N[n] += N
+    def _update_score(self, node, sample, score):
+        "Update N and Q of `node` if verified by `sample`"
+        if node.satisfied(sample):
+            self.Q[node] += score
+            self.N[node] += 1
+
+    def _backpropagate(self, path, sample, score):
+        "Update score for leaf's ancestors (leaf = path[-1])"
+        ancestors = set()
+        for node in path[::-1]:
+            ancestors.update(self.ancestors[node])
+        for node in ancestors:#path[1::-1]:
+            self._update_score(node, sample, score)
 
     def _select(self, node):
-        "Select a child of node, balancing exploration & exploitation"
+        "Select a child of `node`, balancing exploration & exploitation"
         
         def ucb1tuned(n):
-            p, N = self.score(n), self.N[n]
+            p, N = self.precision(n), self.N[n]
             if not N:
                 return float('inf')
-            tmp = math.sqrt(self.ce* math.log(self.N[node]) / N)
+            tmp = math.sqrt(self.ce * math.log(self.N[node]) / N)
             return p + tmp * math.sqrt(min(0.25, p * (1 - p) + tmp))
         
         return max(self.children[node], key=ucb1tuned)
