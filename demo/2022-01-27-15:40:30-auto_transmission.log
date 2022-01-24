@@ -1,0 +1,24 @@
+15:40:30 Simulator: auto_transmission
+15:40:30 Signal being analyzed:
+[[2533.45 2666.14 2092.85 2149.59]
+ [  56.05   58.67   60.26   65.28]
+ [   0.44    0.42    0.4     1.  ]]
+15:40:30 range = [(0, (0, 3000, 6)), (0, (0, 80, 16)), (0, (0, 1, 10))]
+15:40:30 tau = 0.99
+15:40:30 rho = 0.01
+15:40:30 epsilon = 0.0075
+15:40:30 batch_size = 256
+15:40:30 max_depth = 4
+15:40:30 max_iter = 50000
+15:40:30 Initializing primitives...
+15:40:30 Done. 450 primitives.
+15:40:30 Move 1. Choosing best primitive...
+15:43:52 2376 rollouts to reach error 0.75%
+15:43:52 F[-1,-1](s3>0.90) (44793/49126=91.18%)
+15:43:52 Move 2. Choosing best primitive...
+15:57:23 5790 rollouts to reach error 0.75%
+15:57:23 F[-1,-1](s3>0.90)^G[-4,-2](s2>45.00) (29062/30390=95.63%)
+15:57:23 Move 3. Choosing best primitive...
+16:54:10 15912 rollouts to reach error 0.75%
+16:54:10 F[-1,-1](s3>0.90)^F[-4,-1](s2<65.00)^G[-4,-2](s2>45.00) (131711/131719=99.99%)
+16:54:10 F[-1,-1](s3>0.90)^F[-4,-1](s2<70.00)^G[-4,-2](s2>45.00) (174949/175984=99.41%)

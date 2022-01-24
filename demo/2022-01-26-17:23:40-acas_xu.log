@@ -1,0 +1,20 @@
+17:23:40 Simulator: acas_xu
+17:23:40 Signal being analyzed:
+[[3712.8  3594.35 3510.1  3461.27]
+ [   1.39    1.51    1.64    1.76]
+ [  -1.26   -1.2    -1.15   -1.1 ]]
+17:23:40 range = [(0, (0, 8000, 16)), (0, (0, 3.141592653589793, 8)), (0, (-3.141592653589793, 0, 8))]
+17:23:40 tau = 0.98
+17:23:40 rho = 0.01
+17:23:40 epsilon = 0.0075
+17:23:40 batch_size = 256
+17:23:40 max_depth = 5
+17:23:40 max_iter = 50000
+17:23:40 Initializing primitives...
+17:23:41 Done. 448 primitives.
+17:23:41 Move 1. Choosing best primitive...
+17:33:46 1762 rollouts to reach error 0.75%
+17:33:46 F[-4,-2](s2>1.57) (47109/51637=91.23%)
+17:33:46 Move 2. Choosing best primitive...
+21:34:38 33325 rollouts to reach error 0.75%
+21:34:38 F[-4,-2](s2>1.57)^F[-4,-1](s1>3500.00) (91772/91772=100.00%)

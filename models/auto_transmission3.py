@@ -3,20 +3,20 @@ from models.auto_transmission import AutoTransmission
 
 class AutoTransmission3(AutoTransmission):
     def run(self):
-        for _ in range(self.slen):
+        for _ in range(self.slen - 1):
             self.update()
         return np.vstack([self.espds, self.vspds])
 
     def simulate(self):
         throttles = list(np.random.random(self.slen))
-        at = AutoTransmission3(throttles, self.thetas, self.tdelta)
+        at = AutoTransmission3(throttles, [0] * self.slen, self.tdelta)
         sample = at.run()
         score = int(any(espd >= 4750 for espd in at.espds[:int(10/self.tdelta)+1]))
         return sample, score
 
     def plot(self):
-        ts = []
-        for t in range(self.slen):
+        ts = [0]
+        for t in range(1, self.slen):
             self.update()
             ts.append(t * self.tdelta)
         

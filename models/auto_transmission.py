@@ -21,19 +21,20 @@ class AutoTransmission(Simulator):
             raise ValueError(f'thetas should be within [-pi/2, pi/2], got {thetas}')
         
         self.slen = len(throttles)
-        self.throttles = throttles  # Throttle: [0, 1]
-        self.thetas = thetas        # Road slope (rad): [0, pi/2]
-        self.tdelta = tdelta        # Time step
-        self.vspd = 0               # Vehicle speed (km/h)
-        self.espd = 0               # Engine speed (rpm)
-        self.gear = 1               # Gear: 1, 2, 3, 4
+        self.throts = iter(throttles)   # throttles: [0, 1]
+        self.thetas = iter(thetas)      # road slope (rad): [0, pi/2]
+        self.tdelta = tdelta            # time step
+        self.espd = 0                   # engine speed (rpm)
+        self.vspd = 0                   # vehicle speed (km/h)
+        self.throttle = 0               # throttle
+        self.gear = 1                   # gear: 1, 2, 3, 4
         self.params = params
-        self.clock = 0
         self.shifts = { 
             '2-1': (0.5, 0.9, 5, 30),   '1-2': (0.25, 0.9, 10, 40),
             '3-2': (0.05, 0.9, 20, 50), '2-3': (0.35, 0.9, 30, 70),
             '4-3': (0.05, 0.9, 35, 80), '3-4': (0.35, 0.9, 50, 100)
         }
+        self.throttles = throttles
         self.espds = []
         self.vspds = []
         self.gears = []
@@ -43,13 +44,12 @@ class AutoTransmission(Simulator):
             https://www.mathworks.com/help/simulink/slref/modeling-an-automatic-transmission-controller.html
         """
         def speed(shift):
-            throttle = self.throttles[self.clock]
             x1, x2, y1, y2 = self.shifts[shift]
-            if throttle <= x1:
+            if self.throttle <= x1:
                 return y1 / 2.237
-            if throttle >= x2:
+            if self.throttle >= x2:
                 return y2 / 2.237
-            return (y1 + (y2 - y1)/(x2 - x1) * (throttle - x1)) / 2.237
+            return (y1 + (y2 - y1)/(x2 - x1) * (self.throttle - x1)) / 2.237
 
         def nearest_gear(x):
             return abs(x - self.gear)
@@ -98,12 +98,12 @@ class AutoTransmission(Simulator):
         omega_m = self.params.get('omega_m', 420.)  # peak engine angular speed
         beta = self.params.get('beta', 0.4)         # peak engine rolloff
 
-        throttle = self.throttles[self.clock]
-        theta = self.thetas[self.clock]
+        self.throttle = next(self.throts)
+        theta = next(self.thetas)
         ratio = alpha[max(self.gear - 1, 0)]
         omega = ratio * self.vspd
         torque = max(Tm * (1 - beta * (omega / omega_m - 1) ** 2), 0)
-        F = ratio * torque * throttle
+        F = ratio * torque * self.throttle
         self.espd = omega * 6.65
 
         # Gravity due to the road slope.
@@ -128,25 +128,31 @@ class AutoTransmission(Simulator):
         
         self.vspd += dv * self.tdelta
         self.shift_gear()
-        self.clock += 1
 
-    def run(self):
-        for _ in range(self.slen):
+    def get_sample(self):
+        return np.array([self.espd, self.vspd * 2.237, self.throttle])
+
+    def run(self, memory=4):
+        samples = []
+        samples.append(self.get_sample())
+        for _ in range(self.slen-1):
             self.update()
-        return np.vstack([self.espds, self.vspds, self.throttles, self.gears])[:, -4:]
+            samples.append(self.get_sample())
+        return np.stack(samples[-memory:], axis=1)
 
     def simulate(self):
-        gear = 0
-        while gear < 4:
-            throttles = list(np.random.random(self.slen))
-            at = AutoTransmission(throttles, self.thetas, self.tdelta)
-            sample = at.run()
-            gear = at.gears[-1]
-        return sample, at.gear == 3
+        #gear = 0
+        #while gear < 4:
+        throttles = list(np.random.random(self.slen))
+        thetas = [0.] * self.slen
+        at = AutoTransmission(throttles, thetas, self.tdelta)
+        samples = at.run()
+        #gear = at.gears[-1]
+        return samples, at.gear == 3
 
     def plot(self):
-        ts = []
-        for t in range(self.slen):
+        ts = [0]
+        for t in range(1, self.slen):
             self.update()
             ts.append(t * self.tdelta)
         
@@ -180,13 +186,16 @@ class AutoTransmission(Simulator):
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     duration = 12
-    tdelta = 0.1
+    tdelta = 1.0
     throttles = list(np.linspace(0.6, 0.4, int(duration/tdelta)))
-    throttles += list(np.linspace(1, 0.8, int(duration/tdelta)))
-    thetas = [0.]*len(throttles)
+    throttles += [1.0]
+    thetas = [0.] * len(throttles)
 
     at = AutoTransmission(throttles, thetas, tdelta)
-    at.plot()
-    plt.show()
+    samples = at.run(memory=4)
+    print(samples)
+    print(at.gear)
+    #at.plot()
+    #plt.show()
     #plt.savefig(f'demo/auto_transmission2.png')
     

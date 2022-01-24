@@ -41,7 +41,6 @@ class ACAS_XU(Simulator):
         self.v_own = self.norm_v_own * np.array([np.sin(psi0), np.cos(psi0)])
         self.a_prev = 4
         self.a_actual = 4
-        self.sample = np.zeros((3, 4))
 
     def load_nnets(self):
         for a_prev in range(5):
@@ -102,31 +101,34 @@ class ACAS_XU(Simulator):
         self.x_own += (self.v_own - self.v_int) * self.tdelta
         self.x_int += self.v_int * self.tdelta
 
-    def run(self):
-        nb = self.sample.shape[1]
-        for _ in range(self.slen-nb):
+    def run(self, memory=4):
+        samples = []
+        while self.a_actual == 4 and len(samples) < self.slen:
+            #sample = np.hstack([self.get_inputs()[:3], [self.a_prev]])
+            sample = self.get_inputs()[:3]
+            samples.append(sample)
             self.update()
-        for i in range(nb):
-            self.sample[:3, i] = self.get_inputs()[:3]
-            #self.sample[3, i] = self.a_prev
-            self.update()
-        return self.sample
+        if len(samples) < memory:
+            return None
+        return np.stack(samples[-memory:], axis=1)
     
     def simulate(self):
-        random = np.zeros(5, dtype=np.float64)
-        random[0] = np.random.uniform(2000, 8000)
-        random[1] = np.random.uniform(0, np.pi)
-        random[2] = np.random.uniform(-np.pi, 0)
-        random[3:] = self.state0[3:]
-        acasxu = ACAS_XU(random, self.tdelta, self.slen)
-        sample = acasxu.run()
-        return sample, acasxu.a_actual != 4
+        samples = None
+        while samples is None:
+            random = np.zeros(5, dtype=np.float64)
+            random[0] = np.random.uniform(2000, 8000)
+            random[1] = np.random.uniform(0, np.pi)
+            random[2] = np.random.uniform(-np.pi, 0)
+            random[3:] = self.state0[3:]
+            acasxu = ACAS_XU(random, self.tdelta, self.slen)
+            samples = acasxu.run()
+        return samples, acasxu.a_actual != 4
 
 # To execute from root: python3 -m models.acas_xu
 if __name__ == '__main__':
     state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
     acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
     acasxu.load_nnets()
-    sample = acasxu.run()
-    print(sample)
-    print(acasxu.a_actual)
+    samples = acasxu.run(memory=4)
+    print(samples)
+    print(acasxu.a_prev, '=>', acasxu.a_actual)

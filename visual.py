@@ -58,13 +58,14 @@ if __name__ == '__main__':
     rho         = 0.01
     epsilon     = 0.01
     past        = False
-    max_depth   = 2
     batch_size  = 256
+    max_depth   = 2
+    max_iter    = 10000
 
     stl = STL()
     primitives = PrimitiveGenerator(s, srange, rho, past).generate()    
     nb = stl.init(primitives)
-    tree = MCTS(simulator, epsilon, tau, max_depth, batch_size)
+    tree = MCTS(simulator, epsilon, tau, batch_size, max_depth, max_iter)
     for _ in range(200):
         tree._rollout(stl)
     tree.visualize()

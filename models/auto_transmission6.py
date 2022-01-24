@@ -5,15 +5,15 @@ class AutoTransmission6(AutoTransmission3):
     def simulate(self):
         noise = np.random.uniform(-0.4, 0.4, self.slen)
         throttles = np.clip(np.array(self.throttles) + noise, 0.0, 1.0)
-        at = AutoTransmission6(throttles, self.thetas, self.tdelta)
+        at = AutoTransmission6(throttles, [0.] * self.slen, self.tdelta)
         sample = at.run()
         cond1 = all(espd < 3000 for espd in at.espds) 
         cond2 = any(vspd >= 50 for vspd in at.vspds[:int(8/self.tdelta)+1])
         return sample, int(cond1 and cond2)
 
     def plot(self):
-        ts = []
-        for t in range(self.slen):
+        ts = [0]
+        for t in range(1, self.slen):
             self.update()
             ts.append(t * self.tdelta)
         

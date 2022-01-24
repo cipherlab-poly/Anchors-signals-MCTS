@@ -11,12 +11,13 @@ import itertools
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
-    def __init__(self, simulator, epsilon, tau, max_depth, batch_size):
+    def __init__(self, simulator, epsilon, tau, batch_size, max_depth, max_iter):
         self.simulator  = simulator
         self.epsilon    = epsilon
         self.tau        = tau
-        self.max_depth  = max_depth
         self.batch_size = batch_size
+        self.max_depth  = max_depth
+        self.max_iter  = max_iter
         
         self.children  = defaultdict(set)
         self.ancestors = defaultdict(set)
@@ -58,13 +59,13 @@ class MCTS:
             except StopIteration:
                 return anchors
 
-    def train(self, node, max_iter=40000):
+    def train(self, node):
         "Rollout the tree from `node` until error is smaller than `epsilon`"
         err = 1.0
         i = 0
         best = None
         while err > self.epsilon:
-            if i >= max_iter:
+            if i >= self.max_iter:
                 self.finished = True
                 break
             i += 1
@@ -146,9 +147,8 @@ class MCTS:
         self.Q.pop(node, None)
         self.N.pop(node, None)
         for n in self.ancestors[node]:
-            self.children[n].remove(node)
+            self.children[n].discard(node)
         self.ancestors.pop(node, None)
-        self.children.pop(node, None)
     
     def _update_score(self, node, sample, score):
         "Update N and Q of `node` if verified by `sample`"

@@ -4,14 +4,14 @@ from models.auto_transmission3 import AutoTransmission3
 class AutoTransmission4(AutoTransmission3):
     def simulate(self):
         throttles = list(np.random.uniform(0.7, 1.0, self.slen))
-        at = AutoTransmission4(throttles, self.thetas, self.tdelta)
+        at = AutoTransmission4(throttles, [0.] * self.slen, self.tdelta)
         sample = at.run()
         score = int(any(vspd >= 120 for vspd in at.vspds))
         return sample, score
 
     def plot(self):
-        ts = []
-        for t in range(self.slen):
+        ts = [0]
+        for t in range(1, self.slen):
             self.update()
             ts.append(t * self.tdelta)
         
