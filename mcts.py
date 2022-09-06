@@ -6,7 +6,6 @@ Inspired from:
 """
 from collections import defaultdict
 import math
-import itertools
 
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
@@ -120,6 +119,7 @@ class MCTS:
                 self._backpropagate(path, samples[i], scores[i])
         else:
             self._prune(leaf)
+        return path
     
     def _select_path(self, node):
         "Find a path leading to an unexplored descendent of `node`"
@@ -181,7 +181,3 @@ class MCTS:
         if not n:
             return f'{stl} ({q}/{n})'
         return f'{stl} ({q}/{n}={q/n:5.2%})'
-
-    def visualize(self):
-        from visual import Visual
-        Visual(self).visualize()

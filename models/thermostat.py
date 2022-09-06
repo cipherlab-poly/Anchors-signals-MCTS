@@ -25,7 +25,7 @@ class Thermostat(Simulator):
             # on if in_temp below exp_temp for at least *latency*
             self.on = self._black_box(np.array([self.temps]))
             self.ons.append(self.on)
-        return np.array([self.temps])#[-2:]])
+        return np.array([self.temps])
     
     def _black_box(self, sample):
         "on if `in_temp` below `exp_temp` for at least `latency`"
@@ -39,17 +39,17 @@ class Thermostat(Simulator):
     def simulate(self):
         tm = Thermostat(self.out_temp, self.exp_temp, self.latency, self.length)
         sample = tm.run()
-        return sample, tm.on == 0
+        return sample[0, -2:].reshape(1, -1), tm.on == 0
         
     def plot(self):
         import matplotlib.pyplot as plt
         t = range(len(self.temps))
-        fig, ax1 = plt.subplots()
+        _, ax1 = plt.subplots()
         ax1.set_xlabel('time')
         ax1.set_ylabel('temperature')
         ax1.plot(t, self.temps)
 
-        ax2 = ax1.twinx()  # a second axe that shares the same x-axis
+        ax2 = ax1.twinx()  # a second axis that shares the same x-axis
         ax2.set_ylabel('activation')
         ax2.step(t, self.ons, 'r-', where='post')
         plt.yticks([0, 1])

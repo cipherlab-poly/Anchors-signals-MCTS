@@ -4,7 +4,7 @@ import numpy as np
 import itertools
 
 from dataclasses import dataclass
-from typing import List, FrozenSet
+from typing import List, FrozenSet, Set
 
 @dataclass
 class Primitive:
