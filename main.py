@@ -3,7 +3,7 @@ np.set_printoptions(precision=2, suppress=True)
 np.random.seed(42)
 
 from mcts import MCTS
-from stl import STL, Primitive, PrimitiveGenerator, Simulator
+from stl import STL, PrimitiveGenerator, Simulator
 
 import logging
 import sys, os
@@ -26,8 +26,6 @@ def acas_xu(params) -> Simulator:
     state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
     acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
     acasxu.load_nnets()
-    mins = [0.0, 0.0, -np.pi]
-    maxes = [8000.0, np.pi, 0.0]
     params['s'] = acasxu.run()
     params['range'] = [(0, (0, 8000, 16)), (0, (0, np.pi, 8))]
     params['range'] += [(0, (-np.pi, 0, 8))]#, (1, list(range(5)))]
