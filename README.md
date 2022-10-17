@@ -30,12 +30,13 @@ system for unmanned aircraft (ACAS Xu) implemented by a neural network.
 ## Repository organization
 
 ```
---- main.py    - Main executable file 
- |- mcts.py    - Tree object implementing MCTS steps 
- |- stl.py     - STL objects (primitives & formulas)
- |- visual.py  - For visualization of a tree 
- |- simulators - Simulators that can generate signal samples
- |- demo       - Figures and important log files
+--- main.py      - Main executable file 
+ |- mcts.py      - Tree object implementing MCTS steps 
+ |- stl.py       - STL objects (primitives & formulas)
+ |- visual.py    - For visualization of a tree 
+ |- simulator.py - Abstract class for simulators
+ |- simulators   - Simulators that can generate signal samples (function "simulate")
+ |- demo         - Figures and important log files
  |_ ...
 ```
 

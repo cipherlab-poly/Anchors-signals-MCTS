@@ -2,7 +2,7 @@ import copy
 import numpy as np
 from mcts import MCTS
 from stl import STL, PrimitiveGenerator
-from models.thermostat import Thermostat
+from simulators.thermostat import Thermostat
 
 import networkx as nx
 import matplotlib.pyplot as plt

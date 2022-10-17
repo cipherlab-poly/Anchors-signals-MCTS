@@ -253,8 +253,3 @@ class STL(object):
         if not len(self._indices):
             return 'T'
         return '^'.join(repr(STL.__primitives[i]) for i in self._indices)
-
-class Simulator:
-    def simulate(self):
-        "Simulate a signal and return the corresponding reward"
-        raise NotImplementedError("Method 'simulate' not implemented")

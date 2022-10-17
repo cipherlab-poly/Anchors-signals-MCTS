@@ -1,5 +1,5 @@
 import numpy as np
-from stl import Simulator
+from simulator import Simulator
 
 class AutoTransmission(Simulator):
     def __init__(self, throttles, thetas, tdelta, params={}):
@@ -182,7 +182,7 @@ class AutoTransmission(Simulator):
 
 
 
-# To execute from root: python3 -m models.auto_transmission
+# To execute from root: python3 -m simulators.auto_transmission
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     duration = 12

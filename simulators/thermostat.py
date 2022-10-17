@@ -1,5 +1,5 @@
 import numpy as np
-from stl import Simulator
+from simulator import Simulator
 
 class Thermostat(Simulator):
     # outside_temp < expected_temp

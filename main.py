@@ -3,14 +3,15 @@ np.set_printoptions(precision=2, suppress=True)
 np.random.seed(42)
 
 from mcts import MCTS
-from stl import STL, PrimitiveGenerator, Simulator
+from stl import STL, PrimitiveGenerator
+from simulator import Simulator
 
 import logging
 import sys, os
 from datetime import datetime
 
 def thermostat(params) -> Simulator:
-    from models.thermostat import Thermostat
+    from simulators.thermostat import Thermostat
     
     tm = Thermostat(out_temp=19, exp_temp=20, latency=2, length=5)
     params['s'] = np.array([[19.53, 19.33, 19.83, 20.08, 19.37]])
@@ -21,7 +22,7 @@ def thermostat(params) -> Simulator:
     return tm
 
 def acas_xu(params) -> Simulator:
-    from models.acas_xu import ACAS_XU
+    from simulators.acas_xu import ACAS_XU
 
     state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
     acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)
@@ -37,7 +38,7 @@ def acas_xu(params) -> Simulator:
     return acasxu
 
 def auto_transmission(params) -> Simulator:
-    from models.auto_transmission import AutoTransmission
+    from simulators.auto_transmission import AutoTransmission
 
     duration = 12
     tdelta = 1.0
@@ -54,7 +55,7 @@ def auto_transmission(params) -> Simulator:
     return at
 
 def auto_transmission3(params) -> Simulator:
-    from models.auto_transmission3 import AutoTransmission3
+    from simulators.auto_transmission3 import AutoTransmission3
     
     tdelta = 1.0
     throttles = [0.55]*5 + [0.9]*5 + [0.55]*7
@@ -68,7 +69,7 @@ def auto_transmission3(params) -> Simulator:
     return at
 
 def auto_transmission4(params) -> Simulator:
-    from models.auto_transmission4 import AutoTransmission4
+    from simulators.auto_transmission4 import AutoTransmission4
     
     tdelta = 1.0
     throttles = [0.9] * 22
@@ -82,7 +83,7 @@ def auto_transmission4(params) -> Simulator:
     return at
 
 def auto_transmission5(params) -> Simulator:
-    from models.auto_transmission5 import AutoTransmission5
+    from simulators.auto_transmission5 import AutoTransmission5
     
     tdelta = 2.0
     throttles = list(np.linspace(0.7, 0.4, 6)) + [0.4]*4 + [0.1]*7
@@ -95,7 +96,7 @@ def auto_transmission5(params) -> Simulator:
     return at
 
 def auto_transmission6(params) -> Simulator:
-    from models.auto_transmission6 import AutoTransmission6
+    from simulators.auto_transmission6 import AutoTransmission6
     
     tdelta = 2.0
     throttles = list(np.linspace(0.7, 0.4, 6)) + [0.4]*4 + [0.1]*7
@@ -108,7 +109,7 @@ def auto_transmission6(params) -> Simulator:
     return at
 
 def auto_transmission7(params) -> Simulator:
-    from models.auto_transmission7 import AutoTransmission7
+    from simulators.auto_transmission7 import AutoTransmission7
     
     tdelta = 2.0
     throttles = list(np.linspace(0.7, 0.4, 6)) + [0.4]*4 + [0.1]*7

@@ -1,9 +1,9 @@
-from models.acasxu.nnet import NNet
+from simulators.acasxu.nnet import NNet
 from os.path import *
 import numpy as np
 np.set_printoptions(precision=2, suppress=True)
 import logging
-from stl import Simulator
+from simulator import Simulator
 
 "Explain why acas-xu changed from Strong Right turn to Weak Right turn"
 class ACAS_XU(Simulator):
@@ -124,7 +124,7 @@ class ACAS_XU(Simulator):
             samples = acasxu.run()
         return samples, acasxu.a_actual != 4
 
-# To execute from root: python3 -m models.acas_xu
+# To execute from root: python3 -m simulators.acas_xu
 if __name__ == '__main__':
     state0 = np.array([5000.0, np.pi/4, -np.pi/2, 300.0, 100.0])
     acasxu = ACAS_XU(state0, tdelta=1.0, slen=10)

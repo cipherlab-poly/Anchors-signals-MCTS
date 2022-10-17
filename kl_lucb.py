@@ -11,7 +11,6 @@ Implementation inspired from:
 """
 from collections import defaultdict
 import numpy as np
-import itertools
 import heapq
 
 class KL_LUCB:

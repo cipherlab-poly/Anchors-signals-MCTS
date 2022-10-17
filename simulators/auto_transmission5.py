@@ -1,5 +1,5 @@
 import numpy as np
-from models.auto_transmission3 import AutoTransmission3
+from simulators.auto_transmission3 import AutoTransmission3
 
 class AutoTransmission5(AutoTransmission3):
     def simulate(self):
@@ -41,7 +41,7 @@ class AutoTransmission5(AutoTransmission3):
             ax.grid()
 
 
-# To execute from root: python3 -m models.auto_transmission5
+# To execute from root: python3 -m simulators.auto_transmission5
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     tdelta = 2.0
