@@ -2,29 +2,28 @@ from simulators.acasxu.nnet import NNet
 from os.path import *
 import numpy as np
 np.set_printoptions(precision=2, suppress=True)
+
+from typing import Tuple
+
 import logging
 from simulator import Simulator
 
 "Explain why acas-xu changed from Strong Right turn to Weak Right turn"
 class ACAS_XU(Simulator):
     __nnets = {}
-    
     """
-    Parameters
-    ----------
-    state0 : array
-        initial state
-            rho     [0.0, 60760.0]
-            theta   [-3.141593, 3.141593]
-            psi     [-3.141593, 3.141593]
-            v_own   [100.0, 1200.0]
-            v_int   [0.0, 1200.0]
-    tdelta : float
+    :param state0: initial state
+        rho     [0.0, 60760.0]
+        theta   [-3.141593, 3.141593]
+        psi     [-3.141593, 3.141593]
+        v_own   [100.0, 1200.0]
+        v_int   [0.0, 1200.0]
+    :param tdelta: float
         time between two actions
-    slen : int
+    :param slen: int
         signal length of acas-xu controller
     """
-    def __init__(self, state0, tdelta, slen):
+    def __init__(self, state0: np.ndarray, tdelta: float, slen: int) -> None:
         self.state0 = state0
         self.tdelta = tdelta
         self.slen = slen
@@ -42,17 +41,17 @@ class ACAS_XU(Simulator):
         self.a_prev = 4
         self.a_actual = 4
 
-    def load_nnets(self):
+    def load_nnets(self) -> None:
         for a_prev in range(5):
             filename = dirname(abspath(__file__)) + '/acasxu/ACASXU'
             filename += f'_experimental_v2a_{a_prev+1}_1.nnet'
             ACAS_XU.__nnets[a_prev] = NNet(filename)
     
-    def get_rho(self):
+    def get_rho(self) -> float:
         rho = np.sqrt(self.x_own[0]**2 + self.x_own[1]**2)
         return max(rho, 5)
 
-    def get_theta(self):
+    def get_theta(self) -> float:
         rho = np.sqrt(self.x_own[0]**2 + self.x_own[1]**2)
         norm_v_own = np.sqrt(self.v_own[0]**2 + self.v_own[1]**2)
         dot = np.dot(self.x_own, self.v_own) / (rho*norm_v_own)
@@ -62,7 +61,7 @@ class ACAS_XU(Simulator):
             theta *= -1
         return (theta + np.pi) % (np.pi*2) - np.pi
 
-    def get_psi(self):
+    def get_psi(self) -> float:
         norm_v_own = np.sqrt(self.v_own[0]**2 + self.v_own[1]**2)
         norm_v_int = np.sqrt(self.v_int[0]**2 + self.v_int[1]**2)
         dot = np.dot(self.v_own, self.v_int) / (norm_v_own*norm_v_int)
@@ -72,27 +71,27 @@ class ACAS_XU(Simulator):
             psi *= -1
         return (psi + np.pi) % (np.pi*2) - np.pi
 
-    def get_inputs(self):
+    def get_inputs(self) -> np.ndarray:
         return np.array([self.get_rho(), self.get_theta(), self.get_psi(), 
             self.norm_v_own, self.norm_v_int])
 
-    def log_state(self):
+    def log_state(self) -> None:
         log = f'[{self.get_rho():7.2f} {self.get_theta():5.2f} '
         log += f'{self.get_psi():5.2f}] => {self.str_action(self.a_actual)}'
         logging.info(log)
     
-    def str_action(self, action):
+    def str_action(self, action: int) -> str:
         return {0: 'Clear of Conflict',
                 1: 'Weak Left turn',   2: 'Weak Right turn',
                 3: 'Strong Left turn', 4: 'Strong Right turn'}[action]
 
-    def _control(self):
+    def _control(self) -> None:
         self.a_prev = self.a_actual
         nnet = self.__nnets[self.a_actual]
         outputs = nnet.evaluate_network(self.get_inputs())
         self.a_actual = np.argmin(outputs)
     
-    def update(self):
+    def update(self) -> None:
         self._control()
         rate = self.heading_rate[self.a_actual]
         cos = np.cos(rate * self.tdelta)
@@ -101,7 +100,7 @@ class ACAS_XU(Simulator):
         self.x_own += (self.v_own - self.v_int) * self.tdelta
         self.x_int += self.v_int * self.tdelta
 
-    def run(self, memory=4):
+    def run(self, memory: int = 4) -> np.ndarray:
         samples = []
         while self.a_actual == 4 and len(samples) < self.slen:
             #sample = np.hstack([self.get_inputs()[:3], [self.a_prev]])
@@ -112,7 +111,7 @@ class ACAS_XU(Simulator):
             return None
         return np.stack(samples[-memory:], axis=1)
     
-    def simulate(self):
+    def simulate(self) -> Tuple[np.ndarray, bool]:
         samples = None
         while samples is None:
             random = np.zeros(5, dtype=np.float64)

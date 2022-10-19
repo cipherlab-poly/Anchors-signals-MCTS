@@ -1,8 +1,11 @@
 import numpy as np
+
+from typing import Tuple
+
 from simulators.auto_transmission3 import AutoTransmission3
 
 class AutoTransmission5(AutoTransmission3):
-    def simulate(self):
+    def simulate(self) -> Tuple[np.ndarray, bool]:
         noise = np.random.uniform(-0.4, 0.4, self.slen)
         throttles = np.clip(np.array(self.throttles) + noise, 0.0, 1.0)
         at = AutoTransmission5(throttles, [0.] * self.slen, self.tdelta)
@@ -11,13 +14,13 @@ class AutoTransmission5(AutoTransmission3):
         cond2 = any(vspd >= 35 for vspd in at.vspds[:int(4/self.tdelta)+1])
         return sample, (cond1 and cond2)
 
-    def plot(self):
+    def plot(self) -> None:
         ts = [0]
         for t in range(1, self.slen):
             self.update()
             ts.append(t * self.tdelta)
         
-        fig, axs = plt.subplots(3)
+        _, axs = plt.subplots(3)
         axs[0].plot(ts, self.throttles, 'b')
         axs[0].set_ylabel('throttle', color='b')
         axs[0].set_yticks(np.arange(0, 1.2, 0.2))

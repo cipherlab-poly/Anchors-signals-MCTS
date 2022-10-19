@@ -15,7 +15,10 @@ import heapq
 
 class KL_LUCB:
 
-    def __init__(self, batch_size=256, beam_width=8, delta=0.01, epsilon=0.01):
+    def __init__(self, batch_size = 256, 
+                       beam_width=8, 
+                       delta=0.01, 
+                       epsilon=0.01):
         self.batch_size = batch_size
         self.beam_width = beam_width
         self.delta      = delta

@@ -1,5 +1,8 @@
 import copy
 import numpy as np
+
+from typing import Dict, Set, List
+
 from mcts import MCTS
 from stl import STL, PrimitiveGenerator
 from simulators.thermostat import Thermostat
@@ -10,7 +13,9 @@ import itertools
 from networkx.drawing.nx_pydot import graphviz_layout
 
 class Visual:
-    def __init__(self, tree, prog='twopi', save=False):
+    def __init__(self, tree: MCTS, 
+                       prog: str = 'twopi', 
+                       save: bool = False) -> None:
         #self.colors = list(itertools.product(*([(0, 1)]*3)))
         #self.colors.remove((0, 0, 0))
         #self.colors.remove((1, 1, 1))
@@ -28,7 +33,12 @@ class Visual:
         self.save = save
         self.font_size = 12
 
-    def visualize(self, i, children, pruned, Q, N, path):
+    def visualize(self, i: int, 
+                        children: Dict[STL, Set[STL]], 
+                        pruned: Set[STL], 
+                        Q: Dict[STL, int], 
+                        N: Dict[STL, int], 
+                        path: List[STL]) -> None:
         def node_label(node, is_pruned):
             if is_pruned:
                 return '\npruned'
@@ -70,7 +80,12 @@ class Visual:
         else:
             plt.show()
     
-    def draw_sth(self, i, children, pruned, Q, N, path):
+    def draw_sth(self, i: int, 
+                       children: Dict[STL, Set[STL]], 
+                       pruned: Set[STL], 
+                       Q: Dict[STL, int], 
+                       N: Dict[STL, int], 
+                       path: List[STL]) -> None:
         def node_label(node, is_pruned):
             if is_pruned:
                 return '\npruned'

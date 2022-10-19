@@ -107,7 +107,7 @@ class Primitive:
 
 @dataclass
 class PrimitiveGenerator:
-    "(static) generator of primitives and signals"
+    "(static) generator of primitives"
     
     # (instance attributes)
     _s: np.ndarray      # signal being explained
@@ -195,6 +195,12 @@ class PrimitiveGenerator:
         return result
 
 
+"""
+Any newly instanciated STL formula remains the same instance.
+Since the primitives is fixed from the beginning, an STL formula 
+consisting of conjunction of some of these primitives is just 
+represented as a frozenset of their indices.
+"""
 class STL(object):
     __cache = {}
 

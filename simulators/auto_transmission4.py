@@ -1,21 +1,24 @@
 import numpy as np
+
+from typing import Tuple
+
 from simulators.auto_transmission3 import AutoTransmission3
 
 class AutoTransmission4(AutoTransmission3):
-    def simulate(self):
+    def simulate(self) -> Tuple[np.ndarray, bool]:
         throttles = list(np.random.uniform(0.7, 1.0, self.slen))
         at = AutoTransmission4(throttles, [0.] * self.slen, self.tdelta)
         sample = at.run()
         score = int(any(vspd >= 120 for vspd in at.vspds))
         return sample, score
 
-    def plot(self):
+    def plot(self) -> None:
         ts = [0]
         for t in range(1, self.slen):
             self.update()
             ts.append(t * self.tdelta)
         
-        fig, axs = plt.subplots(3)
+        _, axs = plt.subplots(3)
         axs[0].plot(ts, self.throttles, color='b')
         axs[0].set_ylabel('throttle', color='b')
         axs[0].set_ylim([0, 1])

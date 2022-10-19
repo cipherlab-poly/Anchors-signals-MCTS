@@ -1,9 +1,21 @@
 import numpy as np
+
+from typing import Tuple
+
 from simulator import Simulator
 
 class Thermostat(Simulator):
     # outside_temp < expected_temp
-    def __init__(self, out_temp, exp_temp, latency, length):
+    def __init__(self, out_temp: float, 
+                       exp_temp: float, 
+                       latency: int, 
+                       length: int) -> None:
+        """
+        :param out_temp:
+        :param exp_temp:
+        :param latency:
+        :param length:
+        """
         self.out_temp   = out_temp
         self.in_temp    = out_temp + np.random.random()
         self.exp_temp   = exp_temp
@@ -36,7 +48,7 @@ class Thermostat(Simulator):
                     on = 0
         return on
     
-    def simulate(self):
+    def simulate(self) -> Tuple[np.ndarray, bool]:
         tm = Thermostat(self.out_temp, self.exp_temp, self.latency, self.length)
         sample = tm.run()
         return sample[0, -2:].reshape(1, -1), tm.on == 0

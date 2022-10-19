@@ -4,13 +4,25 @@ Inspired from:
     Luke Harold Miles, July 2019, Public Domain Dedication
     https://gist.github.com/qpwo/c538c6f73727e254fdc7fab81024f6e1
 """
+import numpy as np
+from typing import List, Tuple
+
 from collections import defaultdict
 import math
+
+from stl import STL
+from simulator import Simulator
 
 class MCTS:
     "Monte Carlo tree searcher. First rollout the tree then choose a move."
 
-    def __init__(self, simulator, epsilon, tau, batch_size, max_depth, max_iter):
+    def __init__(self, simulator: Simulator, 
+                       epsilon: float, 
+                       tau: float, 
+                       batch_size: int, 
+                       max_depth: int, 
+                       max_iter: int) -> None:
+        
         self.simulator  = simulator
         self.epsilon    = epsilon
         self.tau        = tau
@@ -32,7 +44,7 @@ class MCTS:
         # Found an anchor
         self.finished = False
     
-    def choose(self, node):
+    def choose(self, node: STL) -> List[STL]:
         "Choose the best successor of node (choose a move in the game)"
         
         def ucb1tuned(n):
@@ -48,7 +60,7 @@ class MCTS:
         self.finished = True
         return self._best_anchors(best)
         
-    def _best_anchors(self, node):
+    def _best_anchors(self, node: STL) -> List[STL]:
         anchors = [node]
         while True:
             try:
@@ -58,8 +70,13 @@ class MCTS:
             except StopIteration:
                 return anchors
 
-    def train(self, node):
-        "Rollout the tree from `node` until error is smaller than `epsilon`"
+    def train(self, node: STL) -> Tuple[int, float]:
+        """
+        Rollout the tree from `node` until error is smaller than `epsilon`
+
+        :param node: STL formula from which rollouts are performed
+        :returns: number of rollouts and error
+        """
         err = 1.0
         i = 0
         best = None
@@ -81,13 +98,16 @@ class MCTS:
                     err = min(err, 1.0)
         return i, err
 
-    def precision(self, node):
+    def precision(self, node: STL):
         "Empirical precision of `node`"
         if not self.N[node]:
             return 0.0
         return self.Q[node] / self.N[node]
 
-    def clean(self, parent, child):
+    def clean(self, parent: STL, child: STL):
+        """
+        Clean up useless memory in the tree.
+        """
         self.Q.pop(parent, None)
         self.N.pop(parent, None)
         for node in self.children[parent] - self.children[child] - {child}:
@@ -96,8 +116,13 @@ class MCTS:
             self.children.pop(node, None)
         self.children.pop(parent, None)
     
-    def _rollout(self, node):
-        "Make the tree one layer better (train for one iteration)"
+    def _rollout(self, node: STL) -> List[STL]: 
+        """
+        Make the tree one layer better (train for one iteration).
+
+        :param node: STL formula from which rollouts are performed
+        :returns: the selected path
+        """
         path = self._select_path(node)
 
         # Sample in mini-batch mode
@@ -121,7 +146,7 @@ class MCTS:
             self._prune(leaf)
         return path
     
-    def _select_path(self, node):
+    def _select_path(self, node: STL) -> List[STL]:
         "Find a path leading to an unexplored descendent of `node`"
         path = []
         while True:
@@ -135,13 +160,13 @@ class MCTS:
                     return path
             node = self._select(node)
 
-    def _expand(self, node):
+    def _expand(self, node: STL) -> None:
         "Update the `children` dict with the children of `node`"
         self.children[node] = node.get_children() - self.pruned
         for child in self.children[node]:
             self.ancestors[child].add(node)
 
-    def _prune(self, node):
+    def _prune(self, node: STL) -> None:
         "Prune `node` from the tree"
         self.pruned.add(node)
         self.Q.pop(node, None)
@@ -150,13 +175,13 @@ class MCTS:
             self.children[n].discard(node)
         self.ancestors.pop(node, None)
     
-    def _update_score(self, node, sample, score):
+    def _update_score(self, node: STL, sample: np.ndarray, score: int):
         "Update N and Q of `node` if verified by `sample`"
         if node.satisfied(sample):
             self.Q[node] += score
             self.N[node] += 1
 
-    def _backpropagate(self, path, sample, score):
+    def _backpropagate(self, path: List[STL], sample: np.ndarray, score: int):
         "Update score for leaf's ancestors (leaf = path[-1])"
         ancestors = set()
         for node in path[::-1]:
@@ -164,9 +189,10 @@ class MCTS:
         for node in ancestors:#path[1::-1]:
             self._update_score(node, sample, score)
 
-    def _select(self, node):
-        "Select a child of `node`, balancing exploration & exploitation"
-        
+    def _select(self, node: STL) -> STL:
+        """
+        Select a child of `node`, balancing exploration & exploitation
+        """
         def ucb1tuned(n):
             p, N = self.precision(n), self.N[n]
             if not N:
@@ -176,7 +202,7 @@ class MCTS:
         
         return max(self.children[node], key=ucb1tuned)
 
-    def log(self, stl):
+    def log(self, stl: STL) -> str:
         q, n = self.Q[stl], self.N[stl]
         if not n:
             return f'{stl} ({q}/{n})'

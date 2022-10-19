@@ -1,17 +1,18 @@
 import numpy as np
+
+from typing import Tuple, Iterable, Dict, Any
+
 from simulator import Simulator
 
 class AutoTransmission(Simulator):
-    def __init__(self, throttles, thetas, tdelta, params={}):
+    def __init__(self, throttles: Iterable[float], 
+                       thetas: Iterable[float], 
+                       tdelta: float, 
+                       params: Dict[str, Any] = {}) -> None:
         """
-        Parameters
-        ----------
-        throttles : iterable (e.g. list) of float
-            throttle opening value at each timestamp (within [0, 1])
-        thetas : iterable (e.g. list) of float
-            road slope at each timestamp (in rad, within [0, pi/2])
-        tdelta: float
-            duration between two successive timestamps
+        :param throttles: throttle opening value at each timestamp (in [0,1])
+        :param thetas: road slope at each timestamp (in rad, in [0,pi/2])
+        :param tdelta: duration between two successive timestamps
         """
         if len(throttles) != len(thetas):
             raise ValueError('throttles and thetas should have same duration')
@@ -39,7 +40,7 @@ class AutoTransmission(Simulator):
         self.vspds = []
         self.gears = []
 
-    def shift_gear(self):
+    def shift_gear(self) -> None:
         """Inspired from:
             https://www.mathworks.com/help/simulink/slref/modeling-an-automatic-transmission-controller.html
         """
@@ -82,7 +83,7 @@ class AutoTransmission(Simulator):
             elif shift == '3-4':
                 self.gear = 4
 
-    def update(self):
+    def update(self) -> None:
         """Updates the state machine. Modified from:
             https://python-control.readthedocs.io/en/0.8.3/cruise-control.html
         """
@@ -132,7 +133,7 @@ class AutoTransmission(Simulator):
     def get_sample(self):
         return np.array([self.espd, self.vspd * 2.237, self.throttle])
 
-    def run(self, memory=4):
+    def run(self, memory: int = 4) -> np.ndarray:
         samples = []
         samples.append(self.get_sample())
         for _ in range(self.slen-1):
@@ -140,7 +141,7 @@ class AutoTransmission(Simulator):
             samples.append(self.get_sample())
         return np.stack(samples[-memory:], axis=1)
 
-    def simulate(self):
+    def simulate(self) -> Tuple[np.ndarray, bool]:
         #gear = 0
         #while gear < 4:
         throttles = list(np.random.random(self.slen))
@@ -150,13 +151,13 @@ class AutoTransmission(Simulator):
         #gear = at.gears[-1]
         return samples, at.gear == 3
 
-    def plot(self):
+    def plot(self) -> None:
         ts = [0]
         for t in range(1, self.slen):
             self.update()
             ts.append(t * self.tdelta)
         
-        fig, axs = plt.subplots(4)
+        _, axs = plt.subplots(4)
         axs[0].plot(ts, self.throttles, color='b')
         axs[0].set_ylabel('throttle', color='b')
         axs[0].set_yticks(np.arange(0, 1.2, 0.2))
