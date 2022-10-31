@@ -111,9 +111,7 @@ class PrimitiveGenerator:
     
     # (instance attributes)
     _s: np.ndarray      # signal being explained
-    _srange: list       # list of tuples
-                        # srange[d] = | (0, (min, max, stepsize))     if continuous
-                        #             | (1, list of the finite set)   if discrete
+    _srange: list       # list of (min, max, stepsize) for each dimension
     _rho: float         # robustness degree (~coverage) threshold
     _past: bool = False # true if PtSTL, false if STL
         
@@ -124,74 +122,57 @@ class PrimitiveGenerator:
         sdim, slen = self._s.shape
         arange = range(-slen, 0) if self._past else range(slen)
         for d in range(sdim):
-            # d-th component is continuous
-            if self._srange[d][0] == 0:
-                smin, smax, stepsize = self._srange[d][1]
-                mus = np.linspace(smin, smax, num=stepsize, endpoint=False)[1:]
-                norm = smax - smin
-                for a in arange:
-                    for typ in ['F', 'G']:
-                        b = a + int(typ == 'G')
-                        brange = range(b, 0) if self._past else range(b, slen)
-                        l = [[typ], [a], brange, [d], ['>', '<']]
-                        for r in itertools.product(*l):
-                            stop = False
-                            phi0 = Primitive(*r, mus[0], norm)
-                            phi1 = Primitive(*r, mus[-1], norm)
-                            if phi0.robust(self._s) >= self._rho:
-                                u = 0
-                                if phi1.robust(self._s) < self._rho:
-                                    l = len(mus) - 1
-                                    from_begin = True
-                                else:
-                                    stop = True
-                                    from_begin = False
+            smin, smax, stepsize = self._srange[d]
+            mus = np.linspace(smin, smax, num=stepsize, endpoint=False)[1:]
+            norm = smax - smin
+            for a in arange:
+                for typ in ['F', 'G']:
+                    b = a + int(typ == 'G')
+                    brange = range(b, 0) if self._past else range(b, slen)
+                    l = [[typ], [a], brange, [d], ['>', '<']]
+                    for r in itertools.product(*l):
+                        stop = False
+                        phi0 = Primitive(*r, mus[0], norm)
+                        phi1 = Primitive(*r, mus[-1], norm)
+                        if phi0.robust(self._s) >= self._rho:
+                            u = 0
+                            if phi1.robust(self._s) < self._rho:
+                                l = len(mus) - 1
+                                from_begin = True
                             else:
+                                stop = True
                                 from_begin = False
-                                l = 0
-                                if phi1.robust(self._s) >= self._rho:
-                                    u = len(mus) - 1
+                        else:
+                            from_begin = False
+                            l = 0
+                            if phi1.robust(self._s) >= self._rho:
+                                u = len(mus) - 1
+                            else:
+                                u = len(mus)
+                                stop = True
+                        
+                        if not stop:
+                            while True:
+                                phi0 = Primitive(*r, mus[l], norm)
+                                phi1 = Primitive(*r, mus[u], norm)
+                                if (phi0.robust(self._s) >= self._rho and 
+                                        phi1.robust(self._s) >= self._rho):
+                                    break
+                                elif (phi0.robust(self._s) < self._rho and 
+                                        phi1.robust(self._s) < self._rho):
+                                    break
+                                q = (u + l) // 2
+                                if u == q or l == q:
+                                    break
+                                phi2 = Primitive(*r, mus[q], norm)
+                                if phi2.robust(self._s) >= self._rho:
+                                    u = q
                                 else:
-                                    u = len(mus)
-                                    stop = True
-                            
-                            if not stop:
-                                while True:
-                                    phi0 = Primitive(*r, mus[l], norm)
-                                    phi1 = Primitive(*r, mus[u], norm)
-                                    if (phi0.robust(self._s) >= self._rho and 
-                                            phi1.robust(self._s) >= self._rho):
-                                        break
-                                    elif (phi0.robust(self._s) < self._rho and 
-                                            phi1.robust(self._s) < self._rho):
-                                        break
-                                    q = (u + l) // 2
-                                    if u == q or l == q:
-                                        break
-                                    phi2 = Primitive(*r, mus[q], norm)
-                                    if phi2.robust(self._s) >= self._rho:
-                                        u = q
-                                    else:
-                                        l = q
-                            
-                            rng = range(u+1) if from_begin else range(u, len(mus))
-                            for q in rng:
-                                result.append(Primitive(*r, mus[q], norm))
-                                
-            # d-th component is discrete
-            elif self._srange[d][0] == 1:
-                mus = self._srange[d][1]
-                for a in arange:
-                    for typ in ['F', 'G']:
-                        b = a + int(typ == 'G')
-                        brange = range(b, 0) if self._past else range(b, slen)
-                        l = [[typ], [a], brange, [d], ['='], mus]
-                        for r in itertools.product(*l):
-                            primitive = Primitive(*r, 1.0)
-                            if primitive.robust(self._s) >= self._rho:
-                                result.append(primitive)
-            else:
-                raise ValueError(f'{d}-th component continuous or discrete?')
+                                    l = q
+                        
+                        rng = range(u+1) if from_begin else range(u, len(mus))
+                        for q in rng:
+                            result.append(Primitive(*r, mus[q], norm))
         return result
 
 

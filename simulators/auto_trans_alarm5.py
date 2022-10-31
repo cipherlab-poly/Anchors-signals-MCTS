@@ -2,16 +2,21 @@ import numpy as np
 
 from typing import Tuple
 
-from simulators.auto_transmission3 import AutoTransmission3
+from simulators.auto_trans_alarm1 import AutoTransAlarm1
 
-class AutoTransmission6(AutoTransmission3):
+class AutoTransAlarm5(AutoTransAlarm1):
+    """
+    Trigger an alarm when G[0,30](espd<3000) => G[0,20](vspd<65) is violated.
+    (Section 5.2)
+    """
+
     def simulate(self) -> Tuple[np.ndarray, bool]:
         noise = np.random.uniform(-0.4, 0.4, self.slen)
         throttles = np.clip(np.array(self.throttles) + noise, 0.0, 1.0)
-        at = AutoTransmission6(throttles, [0.] * self.slen, self.tdelta)
+        at = AutoTransAlarm5(throttles, [0.] * self.slen, self.tdelta)
         sample = at.run()
         cond1 = all(espd < 3000 for espd in at.espds) 
-        cond2 = any(vspd >= 50 for vspd in at.vspds[:int(8/self.tdelta)+1])
+        cond2 = any(vspd >= 65 for vspd in at.vspds[:int(20/self.tdelta)+1])
         return sample, int(cond1 and cond2)
 
     def plot(self) -> None:
@@ -44,15 +49,14 @@ class AutoTransmission6(AutoTransmission3):
             ax.grid()
 
 
-# To execute from root: python3 -m simulators.auto_transmission6
+# To execute from root: python3 -m simulators.auto_trans_alarm5
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     tdelta = 2.0
     throttles = list(np.linspace(0.7, 0.4, 6)) + [0.4]*4 + [0.1]*6
-    thetas = [0.]*len(throttles)
 
-    at = AutoTransmission6(throttles, thetas, tdelta)
+    at = AutoTransAlarm5(tdelta, throttles)
     at.plot()
     plt.show()
-    #plt.savefig(f'demo/auto_transmission6.png')
+    #plt.savefig(f'demo/auto_trans_alarm5.png')
     

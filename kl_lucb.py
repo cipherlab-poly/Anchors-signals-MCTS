@@ -1,4 +1,13 @@
+from collections import defaultdict
+import numpy as np
+import heapq
+
+from typing import List, Set, Tuple
+from stl import STL
+
 """
+Original approach of *anchors*, using KL-LUCB instead of MCTS.
+
 Implementation inspired from:
     1) Implementation of the KL-LUCB algorithm by Kaufmann and Kalyanakrishnan in 
     their publication "Information Complexity in Bandit Subset Selection" to 
@@ -9,16 +18,11 @@ Implementation inspired from:
     Luke Harold Miles, July 2019, Public Domain Dedication
     https://gist.github.com/qpwo/c538c6f73727e254fdc7fab81024f6e1
 """
-from collections import defaultdict
-import numpy as np
-import heapq
-
 class KL_LUCB:
-
-    def __init__(self, batch_size = 256, 
-                       beam_width=8, 
-                       delta=0.01, 
-                       epsilon=0.01):
+    def __init__(self, batch_size: int = 256, 
+                       beam_width: int = 8, 
+                       delta: float = 0.01, 
+                       epsilon: float = 0.01):
         self.batch_size = batch_size
         self.beam_width = beam_width
         self.delta      = delta
@@ -28,26 +32,26 @@ class KL_LUCB:
         self.children = defaultdict(set)
         self.ancestors = defaultdict(set)
         
-        # score of a node: Q[node]/N[node]
+        # score of a node: Q[node] / N[node]
         # upper bound: UB[node], lower bound: LB[node]
         self.Q = defaultdict(lambda: 1)
         self.N = defaultdict(lambda: 1)
         self.UB = defaultdict(lambda: 1.0)
         self.LB = defaultdict(lambda: 0.0)
 
-    def choose(self, nodes):
+    def choose(self, nodes: Set[STL]) -> List[STL]:
         def precision(n):
             return self.Q[n] / self.N[n]
         return heapq.nlargest(self.beam_width, nodes, key=precision)
 
-    def get_cands(self, beams):
+    def get_cands(self, beams: Set[STL]) -> Set[STL]:
         cands = set()
         for beam in beams:
             self._expand(beam)
             cands.update(self.children[beam])
         return cands
     
-    def train(self, cands):
+    def train(self, cands: Set[STL]) -> None:
         self.nb_cands = len(cands)
         tmp = iter(cands)
         u_arm = next(tmp)
@@ -64,7 +68,7 @@ class KL_LUCB:
             u_arm, l_arm = self._update_bounds(cands, self._compute_beta(i))
             err = min(err, self.UB[u_arm] - self.LB[l_arm])
 
-    def _update_bounds(self, cands, beta):
+    def _update_bounds(self, cands: List[STL], beta: float) -> Tuple[STL, STL]:
         def prec(n):
             return self.Q[n] / self.N[n]
         def ub(n):
@@ -84,7 +88,7 @@ class KL_LUCB:
             return max(not_J, key=ub), min(J, key=lb)
         raise ValueError('Beam width smaller than candidate number')
     
-    def _expand(self, node):
+    def _expand(self, node: STL) -> None:
         "Update the `children` dict with the children of `node`"
         self.children[node] = node.get_children()
         if node in self.ancestors:
@@ -95,27 +99,27 @@ class KL_LUCB:
             self.ancestors[child].add(node)
             self.ancestors[child].update(ancestors)
 
-    def _simulate(self, node):
+    def _simulate(self, node: STL) -> int:
         "Return the reward for a random simulation of `node`"
         return node.simulate(self.batch_size)
     
-    def _backpropagate(self, node, reward):
+    def _backpropagate(self, node: STL, reward: int) -> None:
         "Send `reward` to the ancestors of `node` and set bounds"
         for ancestor in self.ancestors[node].union({node}):
             self.Q[ancestor] += reward
             self.N[ancestor] += self.batch_size
             
-    def _compute_beta(self, r):
+    def _compute_beta(self, r: int) -> float:
         temp = np.log(405.5 * self.nb_cands * r ** 1.1 / self.delta)
         return temp + np.log(temp)
 
-    def _kl_bernoulli(self, p, q):
+    def _kl_bernoulli(self, p: float, q: float) -> float:
         "Computes KL-divergence between two variables ~ B(p) and B(q)."
         p = min(0.9999, max(0.0001, p))
         q = min(0.9999, max(0.0001, q))
         return p * np.log(p / q) + (1 - p) * np.log((1 - p) / (1 - q))
 
-    def _up_bernoulli(self, p, level):
+    def _up_bernoulli(self, p: float, level: int) -> float:
         "Computes the upper bound of the variable ~ B(p) of a certain level."
         lm = p
         um = min(min(1, p + np.sqrt(level / 2)), 1)
@@ -127,7 +131,7 @@ class KL_LUCB:
                 lm = qm
         return um
 
-    def _low_bernoulli(self, p, level):
+    def _low_bernoulli(self, p: float, level: int) -> float:
         "Computes the lower bound of the variable ~ B(p) of a certain level."
         um = p
         lm = max(min(1, p - np.sqrt(level / 2)), 0)
@@ -140,6 +144,8 @@ class KL_LUCB:
         return lm
 
 """
+Usage in main.py:
+
 from kl_lucb import KL_LUCB
 beam_width = params.get('beam_width', 1)
 delta = params.get('delta', 0.01)

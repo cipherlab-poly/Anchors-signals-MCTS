@@ -28,7 +28,7 @@ class MCTS:
         self.tau        = tau
         self.batch_size = batch_size
         self.max_depth  = max_depth
-        self.max_iter  = max_iter
+        self.max_iter   = max_iter
         
         self.children  = defaultdict(set)
         self.ancestors = defaultdict(set)

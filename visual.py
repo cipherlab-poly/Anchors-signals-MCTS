@@ -1,4 +1,6 @@
+import os
 import copy
+import itertools
 import numpy as np
 
 from typing import Dict, Set, List
@@ -9,17 +11,14 @@ from simulators.thermostat import Thermostat
 
 import networkx as nx
 import matplotlib.pyplot as plt
-import itertools
 from networkx.drawing.nx_pydot import graphviz_layout
 
 class Visual:
+    "For visualization of the DAG. See end of file for usage."
+
     def __init__(self, tree: MCTS, 
                        prog: str = 'twopi', 
                        save: bool = False) -> None:
-        #self.colors = list(itertools.product(*([(0, 1)]*3)))
-        #self.colors.remove((0, 0, 0))
-        #self.colors.remove((1, 1, 1))
-
         auxG = nx.DiGraph()
         for node, children in tree.children.items():
             auxG.add_node(node)
@@ -53,7 +52,6 @@ class Visual:
         for node in pruned:
             auxG.add_node(node)
         
-        #node_color = [self.colors[len(n)] for n in auxG.nodes]
         node_color = [(0,1,0)] * len(auxG.nodes)
         path_labels, other_labels = {}, {}
         for n in auxG.nodes:
@@ -76,7 +74,7 @@ class Visual:
         nx.draw_networkx_labels(auxG, label_pos, labels=other_labels, 
             font_size=self.font_size, font_weight='heavy', font_color='b')
         if self.save:
-            plt.savefig(f'demo/rollout{i}.png')
+            plt.savefig(os.path.join('demo', f'rollout{i}.png'))
         else:
             plt.show()
     
@@ -122,16 +120,21 @@ class Visual:
         nx.draw_networkx_labels(auxG, label_pos, labels=other_labels, 
             font_size=self.font_size, font_weight='heavy', font_color='b')
         if self.save:
-            plt.savefig(f'demo/max_cov.png')
+            plt.savefig(os.path.join('demo', 'max_cov.png'))
         else:
             plt.show()
 
+"""
+Usage: python3 visual.py
+
+This shows the first snapshots of the evolution of the tree (DAG) in
+the case study of the intelligent thermostat introduced in Section 4.3.
+"""
 if __name__ == '__main__':
-    # explain why the thermostat is off 
-    # (temp > 20 once in the last 2 timestamps)
-    simulator   = Thermostat(out_temp=19, exp_temp=20, latency=2, length=5)
+    simulator   = Thermostat(out_temp=19, exp_temp=20, 
+                             latency=2, length=5, memory=2)
     s           = np.array([[19, 21]])
-    srange      = [(0, (18, 22, 4))]
+    srange      = [(18, 22, 4)]
     tau         = 1.0
     rho         = 0.01
     epsilon     = 0.01
@@ -140,7 +143,7 @@ if __name__ == '__main__':
     max_depth   = 2
     max_iter    = 10000
 
-    stl = STL()
+    stl = STL() # The trivial formula: T
     primitives = PrimitiveGenerator(s, srange, rho, past).generate()    
     nb = stl.init(primitives)
     tree = MCTS(simulator, epsilon, tau, batch_size, max_depth, max_iter)
@@ -154,12 +157,14 @@ if __name__ == '__main__':
                       copy.copy(tree.pruned), 
                       copy.copy(tree.Q), 
                       copy.copy(tree.N)))
-    visual = Visual(tree, save=True)
-    #for i in range(rollouts):
-    #    if i == 9:
-    #        visual.font_size = 10
-    #    if i > 9:
-    #        visual.font_size = 8
-    #    visual.visualize(i, *trees[i], paths[i])
+    visual = Visual(tree)#, save=True)
+    for i in range(rollouts):
+        if i == 9:
+            visual.font_size = 10
+        if i > 9:
+            visual.font_size = 8
+        visual.visualize(i, *trees[i], paths[i])
+    
+    # to show how termination works (maximizing coverage)
     visual.font_size = 8
     visual.draw_sth(i, *trees[i], paths[i])
