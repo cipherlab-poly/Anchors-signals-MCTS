@@ -8,8 +8,8 @@ class Thermostat(Simulator):
     """
     Simulate an intelligent thermostat (Section 4.3).
     Set-up: outside temperature < expected temperature
-            thermostat is off at the beginning
-    This case study aims at explaining why the thermostat is off.
+            thermostat is switched off at the beginning
+    This case study aims at explaining why the thermostat is switched off.
     Real explanation: temperature > 20 once within the past two seconds.
     """
     def __init__(self, out_temp: float, 
@@ -28,7 +28,7 @@ class Thermostat(Simulator):
         self.out_temp = out_temp
         self.in_temp = out_temp + np.random.random()
         self.exp_temp = exp_temp
-        self.on = 0 # thermostat is off at the beginning
+        self.on = 0 # thermostat is switched off at the beginning
         self.latency = latency
         self.temps = [self.in_temp]
         self.length = length
@@ -57,7 +57,6 @@ class Thermostat(Simulator):
         return on
     
     def simulate(self) -> Tuple[np.ndarray, bool]:
-        "Sample the last two timestamps and whether the thermostat is off"
         tm = Thermostat(self.out_temp, self.exp_temp, self.latency, 
                         self.length, self.memory)
         sample = tm.run()
