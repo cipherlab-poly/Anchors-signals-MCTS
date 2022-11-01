@@ -12,7 +12,7 @@ class AutoTransAlarm2(AutoTransAlarm1):
 
     def simulate(self) -> Tuple[np.ndarray, bool]:
         throttles = list(np.random.uniform(0.7, 1.0, self.slen))
-        at = AutoTransAlarm2(throttles, [0.] * self.slen, self.tdelta)
+        at = AutoTransAlarm2(self.tdelta, throttles)
         sample = at.run()
         score = int(any(vspd >= 120 for vspd in at.vspds))
         return sample, score

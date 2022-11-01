@@ -13,7 +13,7 @@ class AutoTransAlarm3(AutoTransAlarm1):
     def simulate(self) -> Tuple[np.ndarray, bool]:
         noise = np.random.uniform(-0.4, 0.4, self.slen)
         throttles = np.clip(np.array(self.throttles) + noise, 0.0, 1.0)
-        at = AutoTransAlarm3(throttles, [0.] * self.slen, self.tdelta)
+        at = AutoTransAlarm3(self.tdelta, throttles)
         sample = at.run()
         cond1 = all(espd < 3000 for espd in at.espds) 
         cond2 = any(vspd >= 35 for vspd in at.vspds[:int(4/self.tdelta)+1])

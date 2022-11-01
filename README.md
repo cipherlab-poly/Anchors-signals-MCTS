@@ -20,7 +20,7 @@ for the behaviors of a given black-box model making decisions by
 processing time-varying input signals**. 
 Our approach searches for highly descriptive explanations for these 
 decisions in the form of properties of the input signals, expressed in 
-*Signal Temporal Logic*, which are most susceptible to reproduce the 
+*Signal Temporal Logic*, which are highly likely to reproduce the 
 observed behavior. 
 To illustrate the methodology, we apply it in simulations to the 
 analysis of a hybrid (continuous-discrete) control system and a 
@@ -36,7 +36,7 @@ by a neural network.
  |- visual.py    - Script for visualization of the tree evolution (Section 4.3) 
  |- simulator.py - Abstract class for simulators
  |
- | **folders**
+ |  **folders**
  |- simulators   - Simulators that can generate signal samples (function `simulate`)
  |- demo         - Figures and important log files
  |_ log          - Automatically generated log files
@@ -45,7 +45,7 @@ by a neural network.
 # Case studies
 
 We implemented 3 simulators:
-- Intelligent thermostat: an illustrative example, for visualization (Section 4.3)
+- Intelligent thermostat: an illustrative example (Section 4.3)
 - Automotive automatic transmission system (Section 5)
 - ACAS Xu (Section 6)
 
@@ -68,14 +68,15 @@ In our scenario, the thermostat is switched off automatically, the
 decision "off" corresponding to the observed output for which we seek 
 to provide an explanation.
 
-See the function `thermostat` defined in `main.py`.
+See `thermostat` defined in `main.py`.
 
 ## Automotive automatic transmission system (Section 5)
 
 ### Explaining an STL-based monitoring system (Section 5.2)
 
 To evaluate and validate the proposed algorithm, we consider five of 
-the requirements on an automotive automatic transmission system:
+the requirements on an automotive automatic transmission system
+(`espd` for engine speed & `vspd` for vehicle speed):
 - `G[0,10](espd<4750)` 
 - `G[0,20](vspd<120)`
 - `G[0,30](espd<3000) => G[0,4](vspd<35)`
@@ -89,7 +90,7 @@ aim to *recover* the formulas defining them.
 In other words, we try to explain why the alarm has been triggered just 
 by observing a signal. 
 
-See the functions `auto_trans_alarm1` to `auto_trans_alarm5` defined in 
+See `auto_trans_alarm1` to `auto_trans_alarm5` defined in 
 `simulators` and `main.py`.
 
 ### Explaining the transmission during a passing maneuver (Section 5.3)
@@ -106,7 +107,7 @@ system engaged the 3rd gear at the 12th second, by analyzing the
 throttle opening, the engine speed and the vehicle speed in the 
 previous seconds, using PtSTL (Past Time STL).
 
-See the function `auto_trans` defined in `simulators` and `main.py`.
+See `auto_trans` defined in `simulators` and `main.py`.
 
 ## ACAS Xu: explaining an advisory change (Section 6)
 
@@ -123,7 +124,7 @@ two aircraft were no longer in danger of colliding with each other.
 We attempt to find an explanation, expressed in PtSTL, for why the 
 advisory switched from SRT to WRT at the 10th second.
 
-See the function `acas_xu` defined in `simulators` and `main.py`.
+See `acas_xu` defined in `simulators` and `main.py`.
 
 # Usage
 

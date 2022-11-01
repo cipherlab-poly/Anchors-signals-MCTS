@@ -208,7 +208,7 @@ def run(simulator_name: str) -> None:
     max_iter    = params.get('max_iter', 50000)
 
     logging.info(f'Simulator: {simulator_name}')
-    logging.info(f'Signal being analyzed:\n         {s}')
+    logging.info(f'Signal being analyzed:\n{s}')
     logging.info(f'range = {srange}')
     logging.info(f'tau = {tau}')
     logging.info(f'rho = {rho}')

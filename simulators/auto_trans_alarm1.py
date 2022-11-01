@@ -17,7 +17,7 @@ class AutoTransAlarm1(AutoTrans):
 
     def simulate(self) -> Tuple[np.ndarray, bool]:
         throttles = list(np.random.random(self.slen))
-        at = AutoTransAlarm1(throttles, [0] * self.slen, self.tdelta)
+        at = AutoTransAlarm1(self.tdelta, throttles)
         sample = at.run()
         score = int(any(espd >= 4750 for espd in at.espds[:int(10/self.tdelta)+1]))
         return sample, score
