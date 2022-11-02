@@ -1,4 +1,8 @@
+import os
+import sys
+import logging
 import argparse
+from datetime import datetime
 
 import numpy as np
 np.set_printoptions(precision=2, suppress=True)
@@ -10,9 +14,6 @@ from mcts import MCTS
 from stl import STL, Primitive, PrimitiveGenerator
 from simulator import Simulator
 
-import logging
-import sys, os
-from datetime import datetime
 
 """
 Create simulators.

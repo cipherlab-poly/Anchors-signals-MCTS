@@ -98,13 +98,13 @@ class MCTS:
                     err = min(err, 1.0)
         return i, err
 
-    def precision(self, node: STL):
+    def precision(self, node: STL) -> float:
         "Empirical precision of `node`"
         if not self.N[node]:
             return 0.0
         return self.Q[node] / self.N[node]
 
-    def clean(self, parent: STL, child: STL):
+    def clean(self, parent: STL, child: STL) -> None:
         """
         Clean up useless memory in the tree.
         """
@@ -132,16 +132,12 @@ class MCTS:
             samples.append(sample)
             scores.append(score)
 
-        # Update score for leaf
-        leaf = path[-1]
-        for i in range(self.batch_size):
-            self._update_score(leaf, samples[i], scores[i])
-        
         # If cov(leaf) is too low then prune the leaf
-        # Else backpropagate sample and score to ancestors
-        if self.N[leaf]:
+        # else backpropagate sample and score to relevant ancestors
+        leaf = path[-1]
+        if any(leaf.satisfied(s) for s in samples):
             for i in range(self.batch_size):
-                self._backpropagate(path, samples[i], scores[i])
+                self._backpropagate(path, samples[i], scores[i])    
         else:
             self._prune(leaf)
         return path
@@ -175,19 +171,33 @@ class MCTS:
             self.children[n].discard(node)
         self.ancestors.pop(node, None)
     
-    def _update_score(self, node: STL, sample: np.ndarray, score: int):
-        "Update N and Q of `node` if verified by `sample`"
-        if node.satisfied(sample):
+    def _backpropagate(self, path: List[STL], 
+                             sample: np.ndarray, 
+                             score: int) -> None:
+        """(binary search) 
+        path: root =: phi_0 -> ... -> phi_m := leaf
+        find i* s.t. sample satisfies phi_l for all 0 <= l <= i* 
+                     otherwise for all l > i*
+        """
+        lo, hi = 0, len(path)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if path[mid].satisfied(sample):
+                lo = mid + 1
+            else:
+                hi = mid
+        
+        for node in path[:lo]:
             self.Q[node] += score
             self.N[node] += 1
 
-    def _backpropagate(self, path: List[STL], sample: np.ndarray, score: int):
-        "Update score for leaf's ancestors (leaf = path[-1])"
-        ancestors = set()
-        for node in path[::-1]:
-            ancestors.update(self.ancestors[node])
-        for node in ancestors:#path[1::-1]:
-            self._update_score(node, sample, score)
+        #ancestors = set()
+        #for node in path[::-1]:
+        #    ancestors.update(self.ancestors[node])
+        #for node in ancestors:#path[1::-1]
+        #    if node.satisfied(sample):
+        #        self.Q[node] += score
+        #        self.N[node] += 1
 
     def _select(self, node: STL) -> STL:
         """
