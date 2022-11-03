@@ -4,6 +4,7 @@ Inspired from:
     Luke Harold Miles, July 2019, Public Domain Dedication
     https://gist.github.com/qpwo/c538c6f73727e254fdc7fab81024f6e1
 """
+import os
 import numpy as np
 from typing import List, Tuple
 
@@ -85,8 +86,10 @@ class MCTS:
                 self.finished = True
                 break
             i += 1
-            print(f'\033[1;93m Iter {i} Err {err:5.2%} Best {best} ' + 
-                    f'({self.precision(best):5.2%}) \033[1;m', end='   \r')
+            to_print = f'\033[1;93m Iter {i} Err {err:5.2%} Best {best} '
+            to_print += f'({self.precision(best):5.2%}'
+            to_print += f'={self.Q[best]}/{self.N[best]})\033[1;m'
+            print(f'{to_print:<80}', end='\r')
             self._rollout(node)
 
             if self.children[node]:
@@ -187,17 +190,36 @@ class MCTS:
             else:
                 hi = mid
         
-        for node in path[:lo]:
+        #ancestors = set(path[:lo])
+        #for node in path[:lo]:
+        #    ancestors.update(self.ancestors[node])
+        #for node in ancestors:
+        #    self.Q[node] += score
+        #    self.N[node] += 1
+        
+        # find all ancestors of the critical node
+        if lo == 0:
+            return
+        critical = path[lo - 1]
+
+        length = 0
+        ancestors = {critical}
+        iterator = iter(ancestors)
+        while len(ancestors) > length:
+            length = len(ancestors)
+            to_update = set()
+            while True:
+                try:
+                    node = next(iterator)
+                    to_update.update(self.ancestors[node])
+                except StopIteration:
+                    break
+            iterator = iter(to_update)
+            ancestors.update(to_update)
+        
+        for node in ancestors:
             self.Q[node] += score
             self.N[node] += 1
-
-        #ancestors = set()
-        #for node in path[::-1]:
-        #    ancestors.update(self.ancestors[node])
-        #for node in ancestors:#path[1::-1]
-        #    if node.satisfied(sample):
-        #        self.Q[node] += score
-        #        self.N[node] += 1
 
     def _select(self, node: STL) -> STL:
         """

@@ -43,27 +43,6 @@ max_iter: int (default = 50000)
     maximum number of roll-outs
 """
 
-def auto_trans(params: Dict[str, Any]) -> Simulator:
-    """
-    Simulate an automotive automatic transmission system (Section 5.3).
-    This case study aims at explaining the down-shifting (gear 4 to 3) 
-    during a passing maneuver.
-    """
-    from simulators.auto_trans import AutoTrans
-
-    duration = 12
-    tdelta = 1.0
-    throttles = list(np.linspace(0.6, 0.4, int(duration/tdelta))) + [1.0, 1.0]
-    
-    at = AutoTrans(tdelta, throttles)
-    params['s'] = at.run()
-    params['range'] = [(0, 3000, 6), (0, 80, 16), (0, 1, 10)]
-    params['tau'] = 0.99
-    params['rho'] = 0.01
-    params['epsilon'] = 0.0075
-    params['past'] = True
-    return at
-
 def auto_trans_alarm1(params: Dict[str, Any]) -> Simulator:
     """
     Triggers an alarm when G[0,10](espd<4750) is violated. 
@@ -146,6 +125,27 @@ def auto_trans_alarm5(params: Dict[str, Any]) -> Simulator:
     params['tau'] = 1.0
     return at
 
+def auto_trans(params: Dict[str, Any]) -> Simulator:
+    """
+    Simulate an automotive automatic transmission system (Section 5.3).
+    This case study aims at explaining the down-shifting (gear 4 to 3) 
+    during a passing maneuver.
+    """
+    from simulators.auto_trans import AutoTrans
+
+    duration = 12
+    tdelta = 1.0
+    throttles = list(np.linspace(0.6, 0.4, int(duration/tdelta))) + [1.0, 1.0]
+    
+    at = AutoTrans(tdelta, throttles)
+    params['s'] = at.run()
+    params['range'] = [(0, 3000, 6), (0, 80, 16), (0, 1, 10)]
+    params['tau'] = 0.96
+    params['rho'] = 0.01
+    params['epsilon'] = 0.01
+    params['past'] = True
+    return at
+
 def acas_xu(params: Dict[str, Any]) -> Simulator:
     """
     Simulate an ACAS Xu system (Section 6).
@@ -162,8 +162,8 @@ def acas_xu(params: Dict[str, Any]) -> Simulator:
     params['range'] = [(0, 8000, 16), (0, np.pi, 8), (-np.pi, 0, 8)]
     params['tau'] = 0.98
     params['rho'] = 0.01
-    params['epsilon'] = 0.005
-    params['max_depth'] = 5
+    params['epsilon'] = 0.0075
+    params['max_depth'] = 4
     params['past'] = True
     return acasxu
 
@@ -232,6 +232,7 @@ def run(simulator_name: str) -> None:
         logging.info(f'{nb} rollouts to reach error {err:5.2%}')
         new_stl = tree.choose(stl)
         if isinstance(new_stl, list):
+            logging.info('Maximizing coverage...')
             for anchor in new_stl:
                 logging.info(tree.log(anchor))
             return
@@ -269,20 +270,20 @@ def set_logger(simulator_name: str = None) -> None:
         if isinstance(handler, logging.FileHandler):
             logger.removeHandler(handler)
     logger.addHandler(filehandler)
-    print(f'Logging to {filename}...')
+    print(f'The following log will be saved to {filename}')
 
 def main(log_to_file: bool = False) -> None:
     "Run algorithm in multiple case studies."
     set_logger() # log to terminal
     simulators = []
-    simulators.append('thermostat')
+    #simulators.append('thermostat')
     #simulators.append('auto_trans_alarm1')
     #simulators.append('auto_trans_alarm2')
     #simulators.append('auto_trans_alarm3')
     #simulators.append('auto_trans_alarm4')
     #simulators.append('auto_trans_alarm5')
-    #simulators.append('auto_trans')
-    #simulators.append('acas_xu')
+    simulators.append('auto_trans')
+    simulators.append('acas_xu')
     for simulator in simulators:
         if log_to_file:
             set_logger(simulator)

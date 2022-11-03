@@ -2,6 +2,7 @@ import os
 import copy
 import itertools
 import numpy as np
+np.random.seed(42)
 
 from typing import Dict, Set, List
 
@@ -127,8 +128,9 @@ class Visual:
 """
 Usage: python3 visual.py
 
-This shows the first snapshots of the evolution of the tree (DAG) in
-the case study of the intelligent thermostat introduced in Section 4.3.
+This shows the first snapshots of the iterations of our algorithm and the 
+first snapshorts of the tree (DAG) in the case study of the intelligent 
+thermostat introduced in Section 4.3.
 """
 if __name__ == '__main__':
     simulator   = Thermostat(out_temp=19, exp_temp=20, 
