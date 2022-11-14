@@ -140,9 +140,9 @@ def auto_trans(params: Dict[str, Any]) -> Simulator:
     at = AutoTrans(tdelta, throttles)
     params['s'] = at.run()
     params['range'] = [(0, 3000, 6), (0, 80, 16), (0, 1, 10)]
-    params['tau'] = 0.96
+    params['tau'] = 0.99
     params['rho'] = 0.01
-    params['epsilon'] = 0.01
+    params['epsilon'] = 0.0075
     params['past'] = True
     return at
 
@@ -160,7 +160,7 @@ def acas_xu(params: Dict[str, Any]) -> Simulator:
     acasxu.load_nnets()
     params['s'] = acasxu.run()
     params['range'] = [(0, 8000, 16), (0, np.pi, 8), (-np.pi, 0, 8)]
-    params['tau'] = 0.98
+    params['tau'] = 0.99
     params['rho'] = 0.01
     params['epsilon'] = 0.0075
     params['max_depth'] = 4

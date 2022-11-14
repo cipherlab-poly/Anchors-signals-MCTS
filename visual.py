@@ -75,7 +75,7 @@ class Visual:
         nx.draw_networkx_labels(auxG, label_pos, labels=other_labels, 
             font_size=self.font_size, font_weight='heavy', font_color='b')
         if self.save:
-            plt.savefig(os.path.join('demo', f'rollout{i}.png'))
+            plt.savefig(os.path.join('demo', 'rollouts', f'rollout{i}.png'))
         else:
             plt.show()
     
