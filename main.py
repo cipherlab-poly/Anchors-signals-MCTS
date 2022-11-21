@@ -276,14 +276,14 @@ def main(log_to_file: bool = False) -> None:
     "Run algorithm in multiple case studies."
     set_logger() # log to terminal
     simulators = []
-    #simulators.append('thermostat')
+    simulators.append('thermostat')
     #simulators.append('auto_trans_alarm1')
     #simulators.append('auto_trans_alarm2')
     #simulators.append('auto_trans_alarm3')
     #simulators.append('auto_trans_alarm4')
     #simulators.append('auto_trans_alarm5')
-    simulators.append('auto_trans')
-    simulators.append('acas_xu')
+    #simulators.append('auto_trans')
+    #simulators.append('acas_xu')
     for simulator in simulators:
         if log_to_file:
             set_logger(simulator)

@@ -10,14 +10,13 @@ from typing import List, FrozenSet, Set
 class Primitive:
     "Ex: Primitive('G', 0, 5, 0, '>', 20, 1) <=> G[0,5](s_0 > 20)"
     
-    _typ: str               # 'F'(eventually) or 'G'(always)
-    _a: int                 # lower bound delay
-    _b: int                 # upper bound delay
-    _i: int                 # component index
-    _comp: str              # '<' or '>' (continuous) or '=' (discrete)
-    _mu: float              # constant threshold
-    _normalize: float = 1.0 # if continuous, max - min of mu
-                            # if discrete, 1 (to normalize robustness degree)
+    _typ: str           # 'F'(eventually) or 'G'(always)
+    _a: int             # lower bound delay
+    _b: int             # upper bound delay
+    _i: int             # component index
+    _comp: str          # '<' or '>'
+    _mu: float          # constant threshold
+    _normalize: float   # max - min of mu (to normalize robustness degree)    
     
     def __post_init__(self):
         if self._typ not in ['F', 'G']:
@@ -26,7 +25,7 @@ class Primitive:
             raise ValueError('Invalid delay interval')
         elif self._a > self._b:
             raise ValueError('Invalid delay interval (wrong order)') 
-        elif self._comp not in ['<', '>', '=']:
+        elif self._comp not in ['<', '>']:
             raise ValueError('Invalid comparison')
 
     def robust(self, s: np.ndarray) -> float:
@@ -45,40 +44,28 @@ class Primitive:
         
         if self._typ == 'F':
             if self._comp == '<':
-                res = self._mu - np.min(slicing)
-                return res / self._normalize
-            elif self._comp == '>':
-                res = np.max(slicing) - self._mu
-                return res / self._normalize
-            elif self._mu in slicing:
-                return 1
+                return (self._mu - np.min(slicing)) / self._normalize
             else:
-                return -1
+                return (np.max(slicing) - self._mu) / self._normalize
         else:
             if self._comp == '<':
-                res = self._mu - np.max(slicing)
-                return res / self._normalize
-            elif self._comp == '>':
-                res = np.min(slicing) - self._mu
-                return res / self._normalize
-            elif all(v == self._mu for v in slicing):
-                return 1
+                return (self._mu - np.max(slicing)) / self._normalize
             else:
-                return -1
+                return (np.min(slicing) - self._mu) / self._normalize
 
     def is_child_of(self, parent: Primitive) -> bool:
         if parent == self or parent._comp != self._comp or parent._i != self._i:
             return False
         
-        cond1 = parent._typ == 'F' and parent._a <= self._a and self._b <= parent._b 
-        cond2 = self._typ == 'G' and self._a <= parent._a and parent._b <= self._b
+        cond1 = (parent._typ == 'F' and 
+                 parent._a <= self._a and self._b <= parent._b)
+        cond2 = (self._typ == 'G' and 
+                 self._a <= parent._a and parent._b <= self._b)
         if cond1 or cond2:
             if self._comp == '<':
                 return parent._mu >= self._mu
-            elif self._comp == '>':
-                return self._mu >= parent._mu
             else:
-                return self._mu == parent._mu
+                return self._mu >= parent._mu
         return False
 
     def satisfied(self, s: np.ndarray) -> bool:
@@ -97,13 +84,8 @@ class Primitive:
         return isinstance(other, Primitive) and hash(self) == hash(other)
 
     def __repr__(self):
-        res = f'{self._typ}[{self._a},{self._b}](s{self._i+1}{self._comp}'
-        if self._comp == '=':
-            res += f'{self._mu})'
-        else:
-            res += f'{self._mu:.2f})'
-        return res
-
+        return (f'{self._typ}[{self._a},{self._b}]' + 
+                f'(s{self._i+1}{self._comp}{self._mu:.2f})')
 
 @dataclass
 class PrimitiveGenerator:
