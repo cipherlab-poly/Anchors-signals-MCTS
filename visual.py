@@ -144,6 +144,15 @@ if __name__ == '__main__':
     batch_size  = 256
     max_depth   = 2
     max_iter    = 10000
+    print(f'Simulator: thermostat')
+    print(f'Signal being analyzed:\n{s}')
+    print(f'range = {srange}')
+    print(f'tau = {tau}')
+    print(f'rho = {rho}')
+    print(f'epsilon = {epsilon}')
+    print(f'batch_size = {batch_size}')
+    print(f'max_depth = {max_depth}')
+    print(f'max_iter = {max_iter}')
 
     stl = STL() # The trivial formula: T
     primitives = PrimitiveGenerator(s, srange, rho, past).generate()    

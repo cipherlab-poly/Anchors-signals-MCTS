@@ -4,88 +4,168 @@ import numpy as np
 import itertools
 
 from dataclasses import dataclass
-from typing import List, FrozenSet, Set
+from typing import List, FrozenSet, Set, Tuple
 
-@dataclass
 class Primitive:
-    "Ex: Primitive('G', 0, 5, 0, '>', 20, 1) <=> G[0,5](s_0 > 20)"
-    
-    _typ: str           # 'F'(eventually) or 'G'(always)
-    _a: int             # lower bound delay
-    _b: int             # upper bound delay
-    _i: int             # component index
-    _comp: str          # '<' or '>'
-    _mu: float          # constant threshold
-    _normalize: float   # max - min of mu (to normalize robustness degree)    
-    
-    def __post_init__(self):
-        if self._typ not in ['F', 'G']:
-            raise ValueError('Invalid basic STL type')
-        elif self._a * self._b < 0 or (self._a < 0 and self._b == 0):
-            raise ValueError('Invalid delay interval')
-        elif self._a > self._b:
-            raise ValueError('Invalid delay interval (wrong order)') 
-        elif self._comp not in ['<', '>']:
-            raise ValueError('Invalid comparison')
-
     def robust(self, s: np.ndarray) -> float:
         "Compute the robustness degree relative to signal `s`"
-        
-        try:
-            if self._b == -1:
-                slicing = s[self._i, self._a:]
-            else:
-                slicing = s[self._i, self._a:self._b + 1]
-        except IndexError:
-            return -1
-
-        if not len(slicing):
-            return -1
-        
-        if self._typ == 'F':
-            if self._comp == '<':
-                return (self._mu - np.min(slicing)) / self._normalize
-            else:
-                return (np.max(slicing) - self._mu) / self._normalize
-        else:
-            if self._comp == '<':
-                return (self._mu - np.max(slicing)) / self._normalize
-            else:
-                return (np.min(slicing) - self._mu) / self._normalize
-
-    def is_child_of(self, parent: Primitive) -> bool:
-        if parent == self or parent._comp != self._comp or parent._i != self._i:
-            return False
-        
-        cond1 = (parent._typ == 'F' and 
-                 parent._a <= self._a and self._b <= parent._b)
-        cond2 = (self._typ == 'G' and 
-                 self._a <= parent._a and parent._b <= self._b)
-        if cond1 or cond2:
-            if self._comp == '<':
-                return parent._mu >= self._mu
-            else:
-                return self._mu >= parent._mu
-        return False
+        raise NotImplementedError("`robust` not implemented")
 
     def satisfied(self, s: np.ndarray) -> bool:
         "Verify if satisfied by signal `s`"
         return self.robust(s) > 0
 
-    def get_params(self):
-        return (self._typ, self._a, self._b, self._i, self._comp, self._mu)
+    def is_child_of(self, parent: Primitive) -> bool:
+        raise NotImplementedError("`is_child_of` not implemented")
 
     def __hash__(self):
-        if self._a == self._b:
-            return hash(('F', self._a, self._b, self._i, self._comp, self._mu))
-        return hash((self._typ, self._a, self._b, self._i, self._comp, self._mu))
+        raise NotImplementedError("`__hash__` not implemented")
 
     def __eq__(self, other):
         return isinstance(other, Primitive) and hash(self) == hash(other)
+    
+    def __repr__(self):
+        raise NotImplementedError("`__repr__` not implemented")
+
+@dataclass
+class Eventually(Primitive):
+    "Ex: Eventually((0, 5), (0, '>', 20), 1) <=> F[0,5](s1>20)"
+    
+    _interval: Tuple[int, int]   # bound delay
+    _phi: Tuple[int, str, float] # s_d > mu or s_d < mu
+    _normalize: float = 1.       # max - min of mu (to normalize robustness)
+    
+    def __post_init__(self):
+        try:
+            a, b = self._interval
+            d, comp, mu = self._phi
+        except ValueError:
+            raise ValueError('Invalid primitive parameters')
+        
+        repr_ = f'F[{a},{b}](s{d+1}{comp}{mu:.2f})'
+        if a * b < 0 or a > b or (a < 0 and b == 0):
+            raise ValueError(f'Invalid interval: {repr_}')
+        if d < 0:
+            raise ValueError(f'Invalid dimension: {repr_}')
+        if comp not in ['<', '>']:
+            raise ValueError(f'Invalid comparison: {repr_}')
+
+    def robust(self, s: np.ndarray) -> float:
+        "Compute the robustness degree relative to signal `s`"
+        a, b = self._interval
+        slicing = np.arange(a, b+1)
+        if not slicing.size:
+            return -1
+        d, comp, mu = self._phi
+        if comp == '<':
+            return (mu - np.min(s[d, slicing])) / self._normalize
+        return (np.max(s[d, slicing]) - mu) / self._normalize
+
+    def is_child_of(self, parent: Primitive) -> bool:
+        if self == parent or isinstance(parent, Globally):
+            return False
+                
+        a, b = self._interval
+        d, comp, mu = self._phi
+        
+        # Eventually
+        a_, b_ = parent._interval
+        d_, comp_, mu_ = parent._phi
+        if comp != comp_ or d != d_:
+            return False
+        if a < a_ or b > b_: 
+            return False
+        if comp == '<' and mu <= mu_:
+            return True
+        if comp == '>' and mu >= mu_:
+            return True
+        return False
+
+    def __hash__(self):
+        return hash(('F', self._interval, self._phi))
 
     def __repr__(self):
-        return (f'{self._typ}[{self._a},{self._b}]' + 
-                f'(s{self._i+1}{self._comp}{self._mu:.2f})')
+        a, b = self._interval
+        d, comp, mu = self._phi
+        return f'F[{a},{b}](s{d+1}{comp}{mu:.2f})'
+
+@dataclass
+class Globally(Primitive):
+    "Ex: Globally((0, 5), (0, '>', 20), 1) <=> G[0,5](s1>20)"
+    
+    _interval: Tuple[int, int]   # bound delay
+    _phi: Tuple[int, str, float] # s_d > mu or s_d < mu
+    _normalize: float = 1.       # max - min of mu (to normalize robustness)
+    
+    def __post_init__(self):
+        try:
+            a, b = self._interval
+            d, comp, mu = self._phi
+        except ValueError:
+            raise ValueError('Invalid primitive parameters')
+
+        if a == b:
+            raise ValueError('In case a = b, use Eventually (F).')
+        repr_ = f'G[{a},{b}](s{d+1}{comp}{mu:.2f})'
+        if a * b < 0 or a > b or (a < 0 and b == 0):
+            raise ValueError(f'Invalid interval: {repr_}')
+        if d < 0:
+            raise ValueError(f'Invalid dimension: {repr_}')
+        if comp not in ['<', '>']:
+            raise ValueError(f'Invalid comparison: {repr_}')
+
+    def robust(self, s: np.ndarray) -> float:
+        "Compute the robustness degree relative to signal `s`"
+        a, b = self._interval
+        slicing = np.arange(a, b+1)
+        if not slicing.size:
+            return -1
+        d, comp, mu = self._phi
+        if comp == '<':
+            return (mu - np.max(s[d, slicing])) / self._normalize
+        return (np.min(s[d, slicing]) - mu) / self._normalize
+
+    def is_child_of(self, parent: Primitive) -> bool:
+        if parent == self:
+            return False
+        
+        a, b = self._interval
+        d, comp, mu = self._phi
+        
+        # Eventually
+        if isinstance(parent, Eventually):
+            a_, b_ = parent._interval
+            d_, comp_, mu_ = parent._phi
+            if comp != comp_ or d != d_:
+                return False
+            if a > b_ or b < a_: # empty intersection
+                return False
+            if comp == '<' and mu <= mu_:
+                return True 
+            if comp == '>' and mu >= mu_:
+                return True
+            return False
+            
+        # Globally
+        a_, b_ = parent._interval
+        d_, comp_, mu_ = parent._phi
+        if comp != comp_ or d != d_:
+            return False
+        if a > a_ or b < b_:
+            return False
+        if comp == '<' and mu <= mu_:
+            return True 
+        if comp == '>' and mu >= mu_:
+            return True
+        return False
+    
+    def __hash__(self):
+        return hash(('G', self._interval, self._phi))
+
+    def __repr__(self):
+        a, b = self._interval
+        d, comp, mu = self._phi
+        return f'G[{a},{b}](s{d+1}{comp}{mu:.2f})'
 
 @dataclass
 class PrimitiveGenerator:
@@ -103,19 +183,19 @@ class PrimitiveGenerator:
         result = []
         sdim, slen = self._s.shape
         arange = range(-slen, 0) if self._past else range(slen)
-        for d in range(sdim):
-            smin, smax, stepsize = self._srange[d]
+        for d_ in range(sdim):
+            smin, smax, stepsize = self._srange[d_]
             mus = np.linspace(smin, smax, num=stepsize, endpoint=False)[1:]
-            norm = smax - smin
-            for a in arange:
-                for typ in ['F', 'G']:
-                    b = a + int(typ == 'G')
-                    brange = range(b, 0) if self._past else range(b, slen)
-                    l = [[typ], [a], brange, [d], ['>', '<']]
-                    for r in itertools.product(*l):
+            n = smax - smin
+            for a_ in arange:
+                for typ_ in ['Eventually', 'Globally']:
+                    b_ = a_ + int(typ_ == 'Globally')
+                    brange = range(b_, 0) if self._past else range(b_, slen)
+                    l = [[typ_], [a_], brange, [d_], ['>', '<']]
+                    for typ, a, b, d, comp in itertools.product(*l):
                         stop = False
-                        phi0 = Primitive(*r, mus[0], norm)
-                        phi1 = Primitive(*r, mus[-1], norm)
+                        phi0 = eval(typ)((a, b), (d, comp, mus[0]), n)
+                        phi1 = eval(typ)((a, b), (d, comp, mus[-1]), n)
                         if phi0.robust(self._s) >= self._rho:
                             u = 0
                             if phi1.robust(self._s) < self._rho:
@@ -132,11 +212,10 @@ class PrimitiveGenerator:
                             else:
                                 u = len(mus)
                                 stop = True
-                        
                         if not stop:
                             while True:
-                                phi0 = Primitive(*r, mus[l], norm)
-                                phi1 = Primitive(*r, mus[u], norm)
+                                phi0 = eval(typ)((a, b), (d, comp, mus[l]), n)
+                                phi1 = eval(typ)((a, b), (d, comp, mus[u]), n)
                                 if (phi0.robust(self._s) >= self._rho and 
                                         phi1.robust(self._s) >= self._rho):
                                     break
@@ -146,7 +225,7 @@ class PrimitiveGenerator:
                                 q = (u + l) // 2
                                 if u == q or l == q:
                                     break
-                                phi2 = Primitive(*r, mus[q], norm)
+                                phi2 = eval(typ)((a, b), (d, comp, mus[q]), n)
                                 if phi2.robust(self._s) >= self._rho:
                                     u = q
                                 else:
@@ -154,7 +233,8 @@ class PrimitiveGenerator:
                         
                         rng = range(u+1) if from_begin else range(u, len(mus))
                         for q in rng:
-                            result.append(Primitive(*r, mus[q], norm))
+                            phi = eval(typ)((a, b), (d, comp, mus[q]), n)
+                            result.append(phi)
         return result
 
 
@@ -208,9 +288,6 @@ class STL(object):
             parents.update(STL.__parents[i])
         return {STL(self._indices.union([i])) 
             for i in set(range(length)) - parents} - {self}
-
-    def get_params(self) -> List:
-        return [STL.__primitives[i].get_params() for i in self._indices]
 
     def __len__(self):
         return len(self._indices)

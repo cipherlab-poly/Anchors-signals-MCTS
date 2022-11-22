@@ -298,7 +298,7 @@ def empirical_precision(simulator_name: str,
     Here we sample multiple times for a particular primitive to estimate its
     empirical precision.
     
-    Usage: empirical_precision('acas_xu', [Primitive('G', -4, -1, 0, '<', 4000)])
+    Usage: empirical_precision('acas_xu', [Globally((-4, -1), (0, '<', 4000))])
     """
     simulator = eval(simulator_name)(params)
     STL().init(primitives)
