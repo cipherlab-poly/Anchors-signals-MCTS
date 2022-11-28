@@ -1,3 +1,10 @@
+"""
+@file   simulators/auto_trans.py
+@brief  explaining the transmission during a passing maneuver (Section 5.3)
+
+@author Tzu-Yi Chiu <tzuyi.chiu@gmail.com>
+"""
+
 import numpy as np
 
 from typing import Tuple, Iterable, Dict, Any

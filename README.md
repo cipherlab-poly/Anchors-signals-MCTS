@@ -169,6 +169,11 @@ can be visualized with [visual.py](visual.py):
 python3 visual.py
 ```
 
+# Acknowledgements
+
+This work was funded by [NSERC](https://www.nserc-crsng.gc.ca/index_eng.asp) 
+under grant ALLRP 548464-19.
+
 # References
 
 [[1] T. M. Ribeiro, S. Singh, C. Guestrin, Anchors: High-precision model-agnostic explanations, AAAI.](https://homes.cs.washington.edu/~marcotcr/aaai18.pdf)

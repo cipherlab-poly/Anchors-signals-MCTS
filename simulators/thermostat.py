@@ -1,3 +1,10 @@
+"""
+@file   simulators/thermostat.py
+@brief  explaining why the automated thermostat is switched off
+
+@author Tzu-Yi Chiu <tzuyi.chiu@gmail.com>
+"""
+
 import numpy as np
 
 from typing import Tuple

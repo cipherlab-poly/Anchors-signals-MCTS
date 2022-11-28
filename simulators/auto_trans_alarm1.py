@@ -1,3 +1,11 @@
+"""
+@file   simulators/auto_trans_alarm1.py
+@brief  explaining an STL-based monitoring system (Section 5.2)
+        G[0,10](espd<4750)
+
+@author Tzu-Yi Chiu <tzuyi.chiu@gmail.com>
+"""
+
 import numpy as np
 
 from typing import Tuple

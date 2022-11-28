@@ -1,3 +1,10 @@
+"""
+@file   stl.py
+@brief  STL objects (primitives & formulas)
+
+@author Tzu-Yi Chiu <tzuyi.chiu@gmail.com>
+"""
+
 from __future__ import annotations
 
 import numpy as np

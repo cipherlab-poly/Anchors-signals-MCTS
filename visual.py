@@ -1,3 +1,10 @@
+"""
+@file   visual.py
+@brief  script for visualization of the tree evolution (Section 4.3)
+
+@author Tzu-Yi Chiu <tzuyi.chiu@gmail.com>
+"""
+
 import os
 import copy
 import itertools

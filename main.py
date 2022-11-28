@@ -1,3 +1,10 @@
+"""
+@file   main.py
+@brief  main executable script
+
+@author Tzu-Yi Chiu <tzuyi.chiu@gmail.com>
+"""
+
 import os
 import sys
 import logging

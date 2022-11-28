@@ -1,3 +1,10 @@
+"""
+@file   simulators/acas_xu.py
+@brief  explaining an advisory change (Section 6)
+
+@author Tzu-Yi Chiu <tzuyi.chiu@gmail.com>
+"""
+
 from simulators.acasxu.nnet import NNet
 import os
 import numpy as np
@@ -11,7 +18,7 @@ from simulator import Simulator
 class ACAS_XU(Simulator):
     """
     Simulate an ACAS Xu system (Section 6).
-    This case study aims at explaiing the advisory change from 
+    This case study aims at explaining the advisory change from 
     Strong Right Turn (SRT) to Weak Right Turn (WRT) for mid-air 
     collision aviodance.
     """

@@ -1,4 +1,9 @@
 """
+@file   mcts.py
+@brief  tree object implementing MCTS steps
+
+@author Tzu-Yi Chiu <tzuyi.chiu@gmail.com>
+
 Inspired from:
     A minimal implementation of Monte Carlo tree search (MCTS) in Python 3
     Luke Harold Miles, July 2019, Public Domain Dedication
@@ -15,7 +20,7 @@ from stl import STL
 from simulator import Simulator
 
 class MCTS:
-    "Monte Carlo tree searcher. First rollout the tree then choose a move."
+    "Monte Carlo tree searcher. Roll-out the tree then choose a move."
 
     def __init__(self, simulator: Simulator, 
                        epsilon: float, 
