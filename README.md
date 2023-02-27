@@ -1,9 +1,8 @@
 This repository implements the algorithm introduced in our paper:
 - Tzu-Yi Chiu, Jérôme Le Ny, and Jean Pierre David, 
-**Temporal Logic Explanations for Dynamic Decision Systems using 
-Anchors and Monte Carlo Tree Search**, 
-*The journal of Artificial Intelligence (AIJ)*, 
-[under review] 2022
+[Temporal Logic Explanations for Dynamic Decision Systems using Anchors and Monte Carlo Tree Search](https://www.sciencedirect.com/science/article/abs/pii/S0004370223000437), 
+*Artificial Intelligence Journal (AIJ) Special Issue on Risk-aware Autonomous Systems*, 
+2023
 
 # Abstract
 
